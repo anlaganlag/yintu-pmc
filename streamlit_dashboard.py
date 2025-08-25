@@ -682,61 +682,210 @@ def main():
                                  '预期回款(RMB)', '投入产出比', '数据完整性标记', '目的地']
                 available_columns = [col for col in display_columns if col in display_df.columns]
                 
-                # 显示表格
-                st.dataframe(
-                    display_df[available_columns], 
-                    use_container_width=True,
-                    height=400  # 固定高度以便查看更多数据
-                )
+                # 新增：Expander展开式订单查看
+                st.markdown("### 📋 订单明细查看（展开式）")
                 
-                # 新增：订单明细展开功能
-                st.markdown("### 📋 订单明细查看")
-                selected_order = st.selectbox(
-                    "选择订单查看明细", 
-                    options=["请选择..."] + filtered_df['生产订单号'].tolist(),
-                    key="order_detail_select"
-                )
+                # 增强的筛选和排序控件
+                filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 1, 1, 1])
+                with filter_col1:
+                    search_order = st.text_input("🔍 快速搜索", placeholder="输入订单号、产品型号或客户订单号...", key="expander_search")
+                with filter_col2:
+                    expander_sort = st.selectbox("排序方式", ["投入产出比降序", "欠料金额降序", "客户交期升序", "生产订单号"], key="expander_sort")
+                with filter_col3:
+                    per_page = st.selectbox("每页显示", [20, 50, 100, "全部"], index=1, key="expander_per_page")
+                with filter_col4:
+                    roi_filter = st.selectbox("ROI筛选", ["全部", "高回报(>2.0)", "中等(1.0-2.0)", "待补充"], key="expander_roi_filter")
                 
-                if selected_order != "请选择...":
-                    # 获取选定订单的所有明细
-                    order_details = detail_df[detail_df['生产订单号'] == selected_order].copy()
-                    if len(order_details) > 0:
-                        # 显示订单基本信息
-                        order_info = order_details.iloc[0]
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("客户订单", str(order_info['客户订单号']))
-                        with col2:
-                            st.metric("产品型号", str(order_info['产品型号']))
-                        with col3:
-                            st.metric("订单数量", str(order_info['订单数量']))
-                        with col4:
-                            # 处理交期显示，转换Timestamp为字符串
-                            delivery_date = order_info['客户交期']
-                            if pd.notna(delivery_date):
-                                if isinstance(delivery_date, pd.Timestamp):
-                                    delivery_date_str = delivery_date.strftime('%Y-%m-%d')
-                                else:
-                                    delivery_date_str = str(delivery_date)
+                # 应用搜索筛选
+                expander_orders = filtered_df.copy()
+                if search_order:
+                    expander_orders = expander_orders[
+                        (expander_orders['生产订单号'].astype(str).str.contains(search_order, case=False, na=False)) |
+                        (expander_orders['产品型号'].astype(str).str.contains(search_order, case=False, na=False)) |
+                        (expander_orders['客户订单号'].astype(str).str.contains(search_order, case=False, na=False))
+                    ]
+                
+                # 应用ROI筛选
+                if roi_filter == "高回报(>2.0)":
+                    expander_orders = expander_orders[pd.to_numeric(expander_orders['每元投入回款'], errors='coerce') > 2.0]
+                elif roi_filter == "中等(1.0-2.0)":
+                    roi_values = pd.to_numeric(expander_orders['每元投入回款'], errors='coerce')
+                    expander_orders = expander_orders[(roi_values >= 1.0) & (roi_values <= 2.0)]
+                elif roi_filter == "待补充":
+                    expander_orders = expander_orders[expander_orders['数据完整性标记'] != '完整']
+                
+                # 应用排序
+                if expander_sort == "投入产出比降序":
+                    expander_orders = expander_orders.sort_values('每元投入回款', ascending=False, na_position='last')
+                elif expander_sort == "欠料金额降序":
+                    expander_orders = expander_orders.sort_values('欠料金额(RMB)', ascending=False)
+                elif expander_sort == "客户交期升序":
+                    expander_orders = expander_orders.sort_values('客户交期', ascending=True)
+                else:  # 生产订单号
+                    expander_orders = expander_orders.sort_values('生产订单号')
+                
+                # 分页处理
+                total_orders = len(expander_orders)
+                if per_page != "全部":
+                    per_page = int(per_page)
+                    total_pages = (total_orders + per_page - 1) // per_page
+                    
+                    if total_pages > 1:
+                        page_col1, page_col2, page_col3 = st.columns([1, 2, 1])
+                        with page_col2:
+                            current_page = st.select_slider(
+                                f"页数 ({total_orders} 个订单)",
+                                options=list(range(1, total_pages + 1)),
+                                value=1,
+                                key="expander_page"
+                            )
+                        
+                        start_idx = (current_page - 1) * per_page
+                        end_idx = start_idx + per_page
+                        expander_orders = expander_orders.iloc[start_idx:end_idx]
+                else:
+                    current_page = 1
+                
+                # 显示状态信息
+                if len(expander_orders) > 0:
+                    status_info = f"📊 显示 {len(expander_orders)} 个订单"
+                    if per_page != "全部":
+                        status_info += f"（第 {current_page} 页，共 {total_orders} 个）"
+                    st.info(status_info)
+                else:
+                    st.warning("🔍 没有找到匹配的订单，请调整筛选条件")
+                
+                # 使用expander展示每个订单（支持多个同时展开）
+                for idx, order_row in expander_orders.iterrows():
+                    # 格式化展示数据
+                    amount_str = format_currency(order_row['欠料金额(RMB)'])
+                    
+                    # ROI显示
+                    roi_value = order_row.get('每元投入回款', 0)
+                    if pd.notna(roi_value) and roi_value != float('inf'):
+                        roi_str = f"{roi_value:.1f}倍"
+                        if roi_value > 2.0:
+                            roi_color = "🟢"
+                        elif roi_value >= 1.0:
+                            roi_color = "🟡"
+                        else:
+                            roi_color = "🔴"
+                    else:
+                        roi_str = "待补充"
+                        roi_color = "⚪"
+                    
+                    # 交期处理
+                    delivery_date = order_row['客户交期']
+                    if pd.notna(delivery_date):
+                        if isinstance(delivery_date, pd.Timestamp):
+                            delivery_str = delivery_date.strftime('%m/%d')
+                            # 判断是否紧急（30天内）
+                            days_left = (delivery_date - pd.Timestamp.now()).days
+                            if days_left < 30:
+                                delivery_color = "🔴"
+                            elif days_left < 60:
+                                delivery_color = "🟡"
                             else:
-                                delivery_date_str = "待定"
-                            st.metric("交期", delivery_date_str)
+                                delivery_color = "🟢"
+                        else:
+                            delivery_str = str(delivery_date)[:10]
+                            delivery_color = "⚪"
+                    else:
+                        delivery_str = "待定"
+                        delivery_color = "⚪"
+                    
+                    # 数据完整性状态
+                    if order_row.get('数据完整性标记') == '完整':
+                        status_emoji = "✅"
+                    else:
+                        status_emoji = "⚠️"
+                    
+                    # 创建订单标题
+                    order_title = f"{status_emoji} {order_row['生产订单号']} | {order_row['产品型号']} | 💰{amount_str} | {roi_color}ROI:{roi_str} | {delivery_color}交期:{delivery_str}"
+                    
+                    with st.expander(order_title):
+                        # 获取该订单的详细物料信息
+                        order_details = detail_df[detail_df['生产订单号'] == order_row['生产订单号']].copy()
                         
-                        # 显示物料明细
-                        st.markdown("**物料缺料明细:**")
-                        detail_display = order_details[['欠料物料编号', '欠料物料名称', '欠料数量', 
-                                                       '主供应商名称', 'RMB单价', '欠料金额(RMB)']].copy()
-                        detail_display['RMB单价'] = detail_display['RMB单价'].apply(
-                            lambda x: f"¥{x:,.2f}" if pd.notna(x) and x > 0 else "待定"
-                        )
-                        detail_display['欠料金额(RMB)'] = detail_display['欠料金额(RMB)'].apply(format_currency)
-                        
-                        st.dataframe(detail_display, use_container_width=True, hide_index=True)
-                        
-                        # 汇总信息
-                        total_amount = order_details['欠料金额(RMB)'].sum()
-                        total_items = len(order_details)
-                        st.info(f"📊 该订单共 {total_items} 项物料，总欠料金额: {format_currency(total_amount)}")
+                        if len(order_details) > 0:
+                            # 订单基本信息（2行布局）
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("客户订单", str(order_row['客户订单号']))
+                            with col2:
+                                st.metric("订单数量", f"{order_row['订单数量']:,}")
+                            with col3:
+                                full_delivery = order_row['客户交期']
+                                if pd.notna(full_delivery) and isinstance(full_delivery, pd.Timestamp):
+                                    delivery_full_str = full_delivery.strftime('%Y-%m-%d')
+                                else:
+                                    delivery_full_str = "待定"
+                                st.metric("交期", delivery_full_str)
+                            with col4:
+                                st.metric("目的地", str(order_row.get('目的地', '未知')))
+                            
+                            # ROI详细信息（如果有完整数据）
+                            if order_row.get('数据完整性标记') == '完整':
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    expected_return = order_row.get('订单金额(RMB)', 0)
+                                    st.metric("预期回款", format_currency(expected_return) if pd.notna(expected_return) else "待定")
+                                with col2:
+                                    st.metric("投入金额", amount_str)
+                                with col3:
+                                    st.metric("🎯 投资回报率", roi_str)
+                            
+                            # 物料明细
+                            st.markdown("**📦 物料缺料明细:**")
+                            
+                            # 按供应商分组展示
+                            suppliers = order_details['主供应商名称'].unique()
+                            if len(suppliers) > 1:
+                                # 多供应商用标签页
+                                supplier_tabs = st.tabs([f"{sup[:8]}..." if len(sup) > 8 else sup for sup in suppliers])
+                                
+                                for tab, supplier in zip(supplier_tabs, suppliers):
+                                    with tab:
+                                        supplier_items = order_details[order_details['主供应商名称'] == supplier]
+                                        supplier_total = supplier_items['欠料金额(RMB)'].sum()
+                                        
+                                        st.markdown(f"**供应商: {supplier}** (¥{supplier_total:,.0f})")
+                                        
+                                        # 物料表格
+                                        detail_display = supplier_items[['欠料物料编号', '欠料物料名称', '欠料数量', 'RMB单价', '欠料金额(RMB)']].copy()
+                                        detail_display['RMB单价'] = detail_display['RMB单价'].apply(
+                                            lambda x: f"¥{x:,.2f}" if pd.notna(x) and x > 0 else "待定"
+                                        )
+                                        detail_display['欠料金额(RMB)'] = detail_display['欠料金额(RMB)'].apply(
+                                            lambda x: f"¥{x:,.0f}" if pd.notna(x) else "¥0"
+                                        )
+                                        
+                                        st.dataframe(detail_display, use_container_width=True, hide_index=True, height=200)
+                            else:
+                                # 单供应商直接显示
+                                detail_display = order_details[['欠料物料编号', '欠料物料名称', '欠料数量', 
+                                                               '主供应商名称', 'RMB单价', '欠料金额(RMB)']].copy()
+                                detail_display['RMB单价'] = detail_display['RMB单价'].apply(
+                                    lambda x: f"¥{x:,.2f}" if pd.notna(x) and x > 0 else "待定"
+                                )
+                                detail_display['欠料金额(RMB)'] = detail_display['欠料金额(RMB)'].apply(
+                                    lambda x: f"¥{x:,.0f}" if pd.notna(x) else "¥0"
+                                )
+                                
+                                st.dataframe(detail_display, use_container_width=True, hide_index=True, height=250)
+                            
+                            # 汇总信息
+                            total_items = len(order_details)
+                            unique_suppliers = len(suppliers)
+                            total_amount = order_details['欠料金额(RMB)'].sum()
+                            
+                            summary_text = f"📊 共 {total_items} 项物料，{unique_suppliers} 家供应商，总金额 {format_currency(total_amount)}"
+                            if order_row.get('数据完整性标记') == '完整':
+                                st.success(summary_text)
+                            else:
+                                st.info(summary_text + " | ⚠️ 缺少回款数据")
+                        else:
+                            st.warning(f"未找到订单 {order_row['生产订单号']} 的物料明细")
             else:
                 st.warning("⚠️ 未找到订单明细数据，请检查数据文件是否正确加载")
         
