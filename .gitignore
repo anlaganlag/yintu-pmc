@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Excel temporary files
+~$*.xlsx
+~$*.xls
+
+# Test files
+test_*.csv
+test_*.py
+
+# Generated reports (keep source code)
+*报告_*.xlsx
+*分析报告_*.xlsx
+
+# PDF files
+*.pdf
+
+# HTML files
+*.html
+
+# Keep important Excel source data
+!inventory_list.xlsx
+!supplier.xlsx
+!mat_owe_pso.xlsx
+!owe-mat.xls
+!mcComplete250816.xls
+!(全部)8月9月订单.xlsx
+!(国内)8月9月订单.xlsx
+!(柬埔寨)8月9月订单.xlsx
+!order-amt-89*.xlsx
+!8月9月订单汇总表.xlsx
+!银图工厂库存清单-20250822.xlsx
