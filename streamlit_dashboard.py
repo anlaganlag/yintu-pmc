@@ -705,13 +705,22 @@ def main():
                         order_info = order_details.iloc[0]
                         col1, col2, col3, col4 = st.columns(4)
                         with col1:
-                            st.metric("客户订单", order_info['客户订单号'])
+                            st.metric("客户订单", str(order_info['客户订单号']))
                         with col2:
-                            st.metric("产品型号", order_info['产品型号'])
+                            st.metric("产品型号", str(order_info['产品型号']))
                         with col3:
-                            st.metric("订单数量", order_info['订单数量'])
+                            st.metric("订单数量", str(order_info['订单数量']))
                         with col4:
-                            st.metric("交期", order_info['客户交期'])
+                            # 处理交期显示，转换Timestamp为字符串
+                            delivery_date = order_info['客户交期']
+                            if pd.notna(delivery_date):
+                                if isinstance(delivery_date, pd.Timestamp):
+                                    delivery_date_str = delivery_date.strftime('%Y-%m-%d')
+                                else:
+                                    delivery_date_str = str(delivery_date)
+                            else:
+                                delivery_date_str = "待定"
+                            st.metric("交期", delivery_date_str)
                         
                         # 显示物料明细
                         st.markdown("**物料缺料明细:**")
