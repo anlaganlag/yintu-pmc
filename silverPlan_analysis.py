@@ -301,17 +301,30 @@ class ComprehensivePMCAnalyzer:
         self.final_result['仓存不足_数值'] = pd.to_numeric(self.final_result['仓存不足'], errors='coerce').fillna(0)
         self.final_result['欠料金额(RMB)'] = self.final_result['仓存不足_数值'] * self.final_result['RMB单价']
         
-        # 2. 计算订单金额(RMB)
-        print("2. 计算订单金额(RMB)...")
+        # 2. 计算订单金额(RMB) - 先按客户订单号去重
+        print("2. 计算订单金额(RMB)（按客户订单号去重）...")
         self.final_result['订单金额(USD)'] = pd.to_numeric(self.final_result['订单金额'], errors='coerce').fillna(0)
-        self.final_result['订单金额(RMB)'] = self.final_result['订单金额(USD)'] * self.currency_rates['USD']
+        
+        # 按客户订单号去重计算订单金额
+        customer_order_amounts = self.final_result.groupby('客户订单号').agg({
+            '订单金额(USD)': 'first'  # 每个客户订单号只取一次订单金额
+        }).reset_index()
+        customer_order_amounts['订单金额(RMB)'] = customer_order_amounts['订单金额(USD)'] * self.currency_rates['USD']
+        
+        # 将去重后的订单金额合并回主表
+        self.final_result = self.final_result.merge(
+            customer_order_amounts[['客户订单号', '订单金额(RMB)']],
+            on='客户订单号',
+            how='left',
+            suffixes=('', '_dedup')
+        )
         
         # 3. 按订单计算每元投入回款
         print("3. 计算每元投入回款（按订单汇总）...")
         
-        # 按生产订单号汇总欠料金额
+        # 按生产订单号汇总欠料金额，但订单金额已经去重
         order_totals = self.final_result.groupby('生产单号').agg({
-            '订单金额(RMB)': 'first',
+            '订单金额(RMB)': 'first',  # 订单金额已经按客户订单号去重
             '欠料金额(RMB)': 'sum'
         }).reset_index()
         

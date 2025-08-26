@@ -239,17 +239,38 @@ def create_kpi_cards(data_dict):
     avg_return_ratio = 0
     high_return_count = 0
     
-    if '订单金额(RMB)' in detail_df.columns and '每元投入回款' in detail_df.columns:
-        # 计算总预期回款
-        total_order_amount = detail_df['订单金额(RMB)'].sum()
+    if '订单金额(RMB)' in detail_df.columns and '欠料金额(RMB)' in detail_df.columns:
+        # 按订单计算正确的ROI，然后加权平均
+        # 1. 按生产订单号汇总每个订单的投入和回报
+        order_summary = detail_df.groupby('生产订单号').agg({
+            '订单金额(RMB)': 'first',  # 每个生产订单的金额
+            '欠料金额(RMB)': 'sum'      # 该订单的总欠料金额
+        }).reset_index()
         
-        # 计算平均投入产出比（排除无穷值）
-        valid_ratios = detail_df['每元投入回款'].replace([float('inf'), -float('inf')], None).dropna()
-        if len(valid_ratios) > 0:
-            avg_return_ratio = valid_ratios.mean()
+        # 2. 计算每个订单的ROI
+        order_summary['订单ROI'] = np.where(
+            order_summary['欠料金额(RMB)'] > 0,
+            order_summary['订单金额(RMB)'] / order_summary['欠料金额(RMB)'],
+            0
+        )
+        
+        # 3. 计算总金额用于显示
+        total_order_amount = order_summary['订单金额(RMB)'].sum()
+        total_shortage_amount = order_summary['欠料金额(RMB)'].sum()
+        
+        # 4. 计算加权平均ROI（按投入金额加权）
+        if total_shortage_amount > 0:
+            weighted_roi = (order_summary['订单ROI'] * order_summary['欠料金额(RMB)']).sum() / total_shortage_amount
+            avg_return_ratio = weighted_roi
+        else:
+            avg_return_ratio = 0
         
         # 计算高回报项目数量（投入产出比>2）
-        high_return_count = (valid_ratios > 2.0).sum()
+        if '每元投入回款' in detail_df.columns:
+            valid_ratios = detail_df['每元投入回款'].replace([float('inf'), -float('inf')], None).dropna()
+            high_return_count = (valid_ratios > 2.0).sum()
+        else:
+            high_return_count = 0
     
     # 创建5列布局以包含投入产出比
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -980,9 +1001,6 @@ def main():
                     # 修复：统计正确的总金额（按PSO去重）
                     total_investment = filtered_df['欠料金额(RMB)'].sum()
                     total_return = filtered_df[filtered_df['数据完整性标记'] == '完整']['订单金额(RMB)'].sum() if complete_count > 0 else 0
-                    st.markdown(f"**📋 订单采购清单 ({len(filtered_df)}条记录)** | {filter_info} | 完整数据: {complete_count}条")
-                    if complete_count > 0:
-                        st.markdown(f"💰 **投入**: ¥{total_investment/10000:.1f}万 → **回收**: ¥{total_return/10000:.1f}万 | **整体回报**: {total_return/total_investment:.2f}倍")
                 with col_export2:
                     if len(summary_df) > 0:
                         # Windows Excel兼容版本（GBK编码）
@@ -1090,7 +1108,180 @@ def main():
                 else:  # 欠料金额降序
                     filtered_df = filtered_df.sort_values('欠料金额(RMB)', ascending=False)
                 
-                # 格式化显示
+                # 初始化选中订单的session state（筛选重置时清空）
+                if 'selected_orders' not in st.session_state or filter_applied:
+                    st.session_state.selected_orders = set()
+                
+                # 多选ROI分析功能
+                st.markdown("---")
+                st.markdown("### 📊 多订单ROI分析")
+                
+                # 创建主要区域布局：订单表格 + ROI侧边栏
+                main_col, sidebar_col = st.columns([3, 1])
+                
+                with main_col:
+                    st.markdown("#### 📋 订单选择")
+                    
+                    # 全选功能
+                    col_select_all, col_info = st.columns([1, 3])
+                    with col_select_all:
+                        select_all = st.checkbox("全选", key="select_all_orders")
+                        if select_all:
+                            st.session_state.selected_orders = set(filtered_df['生产订单号'].tolist())
+                        elif not select_all and len(st.session_state.selected_orders) == len(filtered_df):
+                            st.session_state.selected_orders = set()
+                    
+                    with col_info:
+                        selected_count = len(st.session_state.selected_orders)
+                        total_count = len(filtered_df)
+                        st.markdown(f"**已选择**: {selected_count}/{total_count} 个订单")
+                    
+                    # 订单选择表格
+                    selection_data = []
+                    for _, row in filtered_df.iterrows():
+                        order_no = row['生产订单号']
+                        is_selected = order_no in st.session_state.selected_orders
+                        
+                        # 格式化显示数据
+                        amount_str = format_currency(row['欠料金额(RMB)'])
+                        return_str = format_currency(row.get('订单金额(RMB)', 0)) if pd.notna(row.get('订单金额(RMB)')) else "待补充"
+                        roi_value = row.get('每元投入回款', 0)
+                        if pd.notna(roi_value) and roi_value != float('inf'):
+                            roi_str = f"{roi_value:.2f}倍"
+                        else:
+                            roi_str = "待补充"
+                        
+                        selection_data.append({
+                            '选择': is_selected,
+                            '生产订单号': order_no,
+                            '客户订单号': str(row.get('客户订单号', '')),
+                            '产品型号': str(row.get('产品型号', '')),
+                            '客户交期': str(row.get('客户交期', ''))[:10],
+                            '欠料金额': amount_str,
+                            '预期回款': return_str,
+                            '投入产出比': roi_str,
+                            '完整性': row.get('数据完整性标记', '')
+                        })
+                    
+                    # 显示选择表格（使用data_editor实现勾选功能）
+                    if len(selection_data) > 0:
+                        edited_df = st.data_editor(
+                            pd.DataFrame(selection_data),
+                            column_config={
+                                "选择": st.column_config.CheckboxColumn(
+                                    "选择",
+                                    help="勾选要分析ROI的订单",
+                                    default=False,
+                                )
+                            },
+                            disabled=["生产订单号", "客户订单号", "产品型号", "客户交期", "欠料金额", "预期回款", "投入产出比", "完整性"],
+                            hide_index=True,
+                            use_container_width=True,
+                            height=400
+                        )
+                        
+                        # 更新选中状态
+                        new_selected = set()
+                        for idx, row in edited_df.iterrows():
+                            if row['选择']:
+                                new_selected.add(row['生产订单号'])
+                        st.session_state.selected_orders = new_selected
+                
+                with sidebar_col:
+                    # ROI分析侧边栏
+                    st.markdown("#### 💰 ROI分析结果")
+                    
+                    selected_count = len(st.session_state.selected_orders)
+                    
+                    if selected_count == 0:
+                        st.info("💡 请选择订单进行ROI分析")
+                        st.markdown("""
+                        **使用说明:**
+                        1. 在左侧表格勾选订单
+                        2. 系统自动计算总ROI
+                        3. 显示投入回款详情
+                        """)
+                    else:
+                        # 计算选中订单的ROI
+                        selected_orders_df = filtered_df[filtered_df['生产订单号'].isin(st.session_state.selected_orders)]
+                        
+                        # 统计数据 - 按生产订单号计算正确的ROI
+                        selected_order_summary = selected_orders_df.groupby('生产订单号').agg({
+                            '订单金额(RMB)': 'first',  # 每个生产订单的金额
+                            '欠料金额(RMB)': 'sum'      # 该订单的总欠料金额
+                        }).reset_index()
+                        
+                        # 计算每个选中订单的ROI
+                        selected_order_summary['订单ROI'] = np.where(
+                            selected_order_summary['欠料金额(RMB)'] > 0,
+                            selected_order_summary['订单金额(RMB)'] / selected_order_summary['欠料金额(RMB)'],
+                            0
+                        )
+                        
+                        total_shortage = selected_order_summary['欠料金额(RMB)'].sum()
+                        total_order_amount = selected_order_summary['订单金额(RMB)'].sum() 
+                        
+                        # 统计有订单金额的订单数
+                        orders_with_amount = len(selected_orders_df[
+                            (selected_orders_df['订单金额(RMB)'].notna()) & 
+                            (selected_orders_df['订单金额(RMB)'] > 0)
+                        ])
+                        orders_without_amount = selected_count - orders_with_amount
+                        
+                        # 显示基本统计
+                        st.metric("选中订单数", f"{selected_count}个")
+                        
+                        # ROI计算和显示
+                        if total_shortage == 0:
+                            st.success("🎉 **立即生产**")
+                            st.markdown("选中订单无欠料，可立即安排生产")
+                        elif orders_without_amount == selected_count:
+                            st.warning("⚠️ **无订单金额**") 
+                            st.markdown(f"需要投入：{format_currency(total_shortage)}")
+                            st.markdown("缺少订单金额数据，无法计算ROI")
+                        elif orders_without_amount > 0:
+                            # 部分有订单金额 - 使用加权平均ROI
+                            if total_shortage > 0:
+                                available_roi = (selected_order_summary['订单ROI'] * selected_order_summary['欠料金额(RMB)']).sum() / total_shortage
+                            else:
+                                available_roi = 0
+                            st.metric("可计算ROI", f"{available_roi:.2f}倍")
+                            
+                            st.markdown("**💰 资金明细:**")
+                            st.markdown(f"- 总投入：{format_currency(total_shortage)}")
+                            st.markdown(f"- 可计算回款：{format_currency(total_order_amount)}")
+                            st.markdown(f"- 有金额订单：{orders_with_amount}个")
+                            st.markdown(f"- 缺少金额：{orders_without_amount}个")
+                        else:
+                            # 全部有订单金额 - 使用加权平均ROI
+                            if total_shortage > 0:
+                                total_roi = (selected_order_summary['订单ROI'] * selected_order_summary['欠料金额(RMB)']).sum() / total_shortage
+                            else:
+                                total_roi = 0
+                            st.metric("总体ROI", f"{total_roi:.2f}倍", delta=f"vs目标2.8倍")
+                            
+                            # ROI颜色指示
+                            if total_roi >= 2.8:
+                                st.success("🟢 优秀回报项目")
+                            elif total_roi >= 2.0:
+                                st.warning("🟡 良好回报项目") 
+                            else:
+                                st.error("🔴 低回报项目")
+                            
+                            st.markdown("**💰 资金明细:**")
+                            st.markdown(f"- 总投入：{format_currency(total_shortage)}")
+                            st.markdown(f"- 总回款：{format_currency(total_order_amount)}")
+                            st.markdown(f"- 净收益：{format_currency(total_order_amount - total_shortage)}")
+                        
+                        # 清除选择按钮
+                        if st.button("🗑️ 清除选择", use_container_width=True):
+                            st.session_state.selected_orders = set()
+                            st.rerun()
+                
+                # 分隔线，分隔多选ROI功能和详细查看功能
+                st.markdown("---")
+                
+                # 格式化显示（为后续展开式详情准备）
                 display_df = filtered_df.copy()
                 display_df['欠料金额(RMB)'] = display_df['欠料金额(RMB)'].apply(format_currency)
                 
