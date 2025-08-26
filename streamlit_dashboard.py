@@ -25,6 +25,36 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+def check_password():
+    """简单密码认证"""
+    def password_entered():
+        if st.session_state["password"] == "silverplan123":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.markdown("### 🔐 银图PMC智能分析平台 - 访问验证")
+        st.text_input("请输入访问密码", type="password", 
+                     on_change=password_entered, key="password", 
+                     placeholder="输入密码以访问系统")
+        st.info("请联系系统管理员获取访问密码")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.markdown("### 🔐 银图PMC智能分析平台 - 访问验证")
+        st.error("❌ 密码错误，请重新输入")
+        st.text_input("请输入正确的访问密码", type="password", 
+                     on_change=password_entered, key="password",
+                     placeholder="输入密码以访问系统")
+        return False
+    else:
+        return True
+
+# 密码验证 - 必须通过才能访问主应用
+if not check_password():
+    st.stop()
+
 # 在标题区域添加刷新按钮和上传功能
 header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
 with header_col1:
