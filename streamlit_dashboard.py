@@ -17,13 +17,17 @@ import os
 import tempfile
 from datetime import datetime
 
-# 页面配置
+# 页面配置 - 必须在任何Streamlit组件之前
 st.set_page_config(
     page_title="银图PMC智能分析平台",
     page_icon="🌟",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# 初始化session state
+if 'password_correct' not in st.session_state:
+    st.session_state.password_correct = None
 
 def check_password():
     """简单密码认证"""
