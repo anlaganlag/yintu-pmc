@@ -1171,8 +1171,16 @@ def main():
                 # 初始化filtered_df（修复变量引用错误）
                 filtered_df = summary_df.copy()
                 
-                # 计算关键统计数据 - 包括不缺料订单的回款金额
-                no_shortage_orders = summary_df[summary_df['欠料金额(RMB)'] == 0]
+                # 计算关键统计数据 - 修复重复计算问题
+                # 首先按生产订单号去重计算真实回款金额
+                unique_orders = summary_df.groupby('生产订单号').agg({
+                    '订单金额(RMB)': 'first',  # 每个订单只计算一次
+                    '欠料金额(RMB)': 'first',  # 欠料金额已按订单汇总
+                    '数据完整性标记': 'first'
+                }).reset_index()
+                
+                # 基于去重后的数据计算统计
+                no_shortage_orders = unique_orders[unique_orders['欠料金额(RMB)'] == 0]
                 no_shortage_return = no_shortage_orders['订单金额(RMB)'].sum() if len(no_shortage_orders) > 0 else 0
                 no_shortage_count = len(no_shortage_orders)
                 
@@ -1188,9 +1196,10 @@ def main():
                     st.metric("💰 缺料投入", format_currency(total_shortage),
                              help="需要采购的物料金额")
                 with metric_cols[2]:
-                    total_return_all = summary_df['订单金额(RMB)'].sum()
+                    # 修复：使用去重后的订单金额，避免重复计算
+                    total_return_all = unique_orders['订单金额(RMB)'].sum()
                     st.metric("💵 预期总回款", format_currency(total_return_all),
-                             help="所有订单的预期回款金额")
+                             help="所有订单的预期回款金额（按生产订单号去重）")
                 with metric_cols[3]:
                     st.metric("✅ 不缺料订单", f"{no_shortage_count}个",
                              help="无需采购即可生产的订单")
@@ -1205,9 +1214,14 @@ def main():
                 with col_export1:
                     filter_info = f"时间范围: {start_date} ~ {end_date}" if month_filter == "全部" else f"筛选: {month_filter}"
                     complete_count = len(filtered_df[filtered_df['数据完整性标记'] == '完整']) if '数据完整性标记' in filtered_df.columns else 0
-                    # 修复：统计正确的总金额（按PSO去重）
+                    # 修复：统计正确的总金额（按PSO去重） 
                     total_investment = filtered_df['欠料金额(RMB)'].sum()
-                    total_return = filtered_df[filtered_df['数据完整性标记'] == '完整']['订单金额(RMB)'].sum() if complete_count > 0 else 0
+                    # 确保按生产订单号去重计算回款金额
+                    if complete_count > 0:
+                        complete_unique = filtered_df[filtered_df['数据完整性标记'] == '完整'].groupby('生产订单号')['订单金额(RMB)'].first()
+                        total_return = complete_unique.sum()
+                    else:
+                        total_return = 0
                 with col_export2:
                     if len(summary_df) > 0:
                         # Windows Excel兼容版本（GBK编码）
