@@ -1021,8 +1021,7 @@ def main():
                     '数据完整性标记': 'first'  # 新增：数据状态
                 }).reset_index()
                 
-                # 过滤大于1000的订单
-                summary_df = summary_df[summary_df['欠料金额(RMB)'] >= 1000]
+                # 保留所有订单，不设置任何金额限制
                 
                 # 初始化filtered_df（修复变量引用错误）
                 filtered_df = summary_df.copy()
@@ -1084,7 +1083,7 @@ def main():
                 ])
                 
                 # 添加投入产出比排序和高回报筛选（带数量提示）
-                col_sort1, col_sort2, col_sort3, col_sort4, col_reset = st.columns([1.2, 1.2, 1.2, 1.2, 0.6])
+                col_sort1, col_sort2, col_sort3, col_sort4, col_sort5, col_reset = st.columns([1.2, 1.2, 1.2, 1.2, 1.2, 0.6])
                 with col_sort1:
                     sort_option = st.selectbox("排序方式", ["投入产出比降序", "客户交期升序", "欠料金额降序"], key="order_sort")
                 with col_sort2:
@@ -1093,6 +1092,10 @@ def main():
                     urgent_projects = st.checkbox(f"紧急高回报 ({urgent_count}条)", help="投入产出比>2且客户交期≤9月10日")
                 with col_sort4:
                     show_complete_only = st.checkbox(f"完整数据 ({complete_count}条)", help="只显示有订单金额的项目")
+                with col_sort5:
+                    # 计算不缺料订单数量
+                    no_shortage_count = len(summary_df[summary_df['欠料金额(RMB)'] == 0])
+                    show_no_shortage = st.checkbox(f"不缺料订单 ({no_shortage_count}条)", help="显示欠料金额为0的订单")
                 with col_reset:
                     st.markdown("<br>", unsafe_allow_html=True)  # 对齐按钮位置
                     if st.button("🔄 重置", help="清除所有筛选条件"):
@@ -1101,6 +1104,15 @@ def main():
                 # 应用筛选和排序
                 filtered_df = summary_df.copy()
                 filter_applied = False
+                
+                # 不缺料订单筛选
+                if show_no_shortage:
+                    # 只显示不缺料的订单（欠料金额为0）
+                    filtered_df = filtered_df[filtered_df['欠料金额(RMB)'] == 0]
+                    filter_applied = True
+                else:
+                    # 默认过滤掉不缺料订单，只显示缺料订单（欠料金额>0）
+                    filtered_df = filtered_df[filtered_df['欠料金额(RMB)'] > 0]
                 
                 # 数据完整性筛选
                 if show_complete_only:
@@ -1636,7 +1648,8 @@ def main():
                 }).reset_index()
                 
                 # 过滤小额供应商
-                supplier_summary = supplier_summary[supplier_summary['欠料金额(RMB)'] >= 1000]
+                # 移除金额限制，显示所有供应商
+                # supplier_summary = supplier_summary[supplier_summary['欠料金额(RMB)'] >= 1000]
                 supplier_summary = supplier_summary.reset_index(drop=True)
                 
                 # 添加统计列
@@ -1704,7 +1717,7 @@ def main():
                         st.markdown("**📋 相关订单明细:**")
                         supplier_orders = supplier_detail_df[
                             (supplier_detail_df['主供应商名称'] == supplier_row['主供应商名称']) &
-                            (supplier_detail_df['欠料金额(RMB)'] >= 1000)
+                            (supplier_detail_df['欠料金额(RMB)'] >= 0)  # 显示所有金额的订单
                         ][['生产订单号', '客户订单号', '欠料物料名称', '欠料金额(RMB)', '客户交期']].copy()
                         
                         supplier_orders['欠料金额(RMB)'] = supplier_orders['欠料金额(RMB)'].apply(format_currency)
