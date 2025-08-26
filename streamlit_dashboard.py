@@ -128,40 +128,69 @@ st.markdown("""
 def load_data():
     """加载Excel数据"""
     try:
-        # 尝试加载最新的带回款数据报告，如果不存在则使用原报告
+        # 尝试加载最新的分析报告（按时间戳排序，最新优先）
         import glob
-        report_files = glob.glob(r"D:\yingtu-PMC\精准供应商物料分析报告_含回款_*.xlsx")
-        if report_files:
-            # 使用最新的含回款报告
-            latest_report = max(report_files)
-            df = pd.read_excel(latest_report, sheet_name='Sheet1')
-            # 转换为字典格式以保持兼容性
-            excel_data = {'1_订单缺料明细': df}
+        import os
+        
+        # 收集所有可能的报告文件
+        all_report_patterns = [
+            "银图PMC综合物料分析报告_*.xlsx",  # 最新的综合报告（当前目录）
+            r"D:\yingtu-PMC\精准供应商物料分析报告_含回款_*.xlsx",  # 含回款报告
+            r"D:\yingtu-PMC\精准供应商物料分析报告_2025*.xlsx",  # 基础报告（PMC目录）
+            "精准供应商物料分析报告_*.xlsx"  # 其他报告（当前目录）
+        ]
+        
+        all_files = []
+        for pattern in all_report_patterns:
+            files = glob.glob(pattern)
+            all_files.extend([(f, os.path.getmtime(f)) for f in files])
+        
+        if all_files:
+            # 按修改时间排序，选择最新的文件
+            latest_file = max(all_files, key=lambda x: x[1])[0]
+            latest_report = latest_file
+            
+            # 判断文件格式并加载
+            if "含回款" in latest_report:
+                # 含回款报告是单工作表格式
+                df = pd.read_excel(latest_report)
+                excel_data = {'1_订单缺料明细': df}
+                print(f"✅ 加载含回款报告: {latest_report}")
+            else:
+                # 其他报告是多工作表格式
+                excel_data = pd.read_excel(latest_report, sheet_name=None)
+                # 如果是综合报告，需要映射工作表名称
+                if "综合物料分析明细" in excel_data:
+                    excel_data['1_订单缺料明细'] = excel_data.pop('综合物料分析明细')
+                print(f"✅ 加载最新报告: {latest_report}")
+        # 回退到原报告
         else:
-            # 回退到原报告
             excel_data = pd.read_excel(
                 r"D:\yingtu-PMC\精准供应商物料分析报告_20250825_1740.xlsx",
                 sheet_name=None
             )
+            print("✅ 加载原报告")
         
         # 修复数据类型问题，确保字符串列保持为字符串类型
         for sheet_name, df in excel_data.items():
             if not df.empty:
                 # 确保订单号等字段保持为字符串
                 string_columns = ['客户订单号', '生产订单号', '产品型号', '物料编码', 
-                                '物料名称', '供应商编码', '供应商名称', '货币']
+                                '物料名称', '供应商编码', '供应商名称', '货币',
+                                '主供应商名称', '欠料物料编号', '欠料物料名称', 
+                                '数据完整性标记', '数据填充标记']
                 for col in string_columns:
                     if col in df.columns:
-                        df[col] = df[col].astype(str)
+                        # 将NaN值替换为空字符串，然后转换为字符串
+                        df[col] = df[col].fillna('').astype(str)
                 
                 # 确保数值列为数值类型
-                numeric_columns = ['订单数量', '欠料金额(RMB)', '报价金额(RMB)', '供应商评分', '订单金额(RMB)', '每元投入回款']
+                numeric_columns = ['数量Pcs', '欠料金额(RMB)', '报价金额(RMB)', '供应商评分', 
+                                 '订单金额(RMB)', '订单金额(USD)', '每元投入回款', '订单数量',
+                                 '欠料数量', 'RMB单价', '欠料金额(RMB)']
                 for col in numeric_columns:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce')
-                
-                # 确保字符串列保持为字符串类型（新增数据完整性标记）
-                string_columns.append('数据完整性标记')
         
         return excel_data
     except FileNotFoundError:
@@ -190,8 +219,13 @@ def create_kpi_cards(data_dict):
     total_orders = detail_df['生产订单号'].nunique()
     total_suppliers = detail_df['主供应商名称'].nunique()
     
-    # 8月数据
-    aug_amount = detail_df[detail_df['月份'] == '8月']['欠料金额(RMB)'].sum()
+    # 8月数据（兼容新数据格式）
+    # 获取8月相关数据，兼容新旧格式
+    if '涉及月份' in detail_df.columns:
+        aug_filter = detail_df['涉及月份'].str.contains('8月', na=False)
+    else:
+        aug_filter = (detail_df['月份'] == '8月') | (detail_df['月份'] == '8-9月')
+    aug_amount = detail_df[aug_filter]['欠料金额(RMB)'].sum()
     
     # 投入产出分析（新增）
     total_order_amount = 0
@@ -300,15 +334,36 @@ def create_fund_distribution_chart(detail_df):
 
 def create_monthly_comparison_chart(detail_df):
     """创建8月vs9月对比图"""
-    monthly_data = detail_df.groupby('月份')['欠料金额(RMB)'].sum().reset_index()
+    # 处理月份字段，兼容新旧格式
+    if '涉及月份' in detail_df.columns:
+        # 新格式：使用"涉及月份"字段
+        month_col = '涉及月份'
+        monthly_data = detail_df.groupby(month_col)['欠料金额(RMB)'].sum().reset_index()
+        monthly_data.rename(columns={month_col: '月份'}, inplace=True)
+        color_map = {'8月': '#4A90E2', '9月': '#7ED321', '8月,9月': '#F5A623'}
+        title = "📈 月份分布欠料金额分析"
+    elif '8-9月' in detail_df['月份'].values:
+        # 旧格式：8-9月汇总
+        total_amount = detail_df['欠料金额(RMB)'].sum()
+        monthly_data = pd.DataFrame({
+            '月份': ['8-9月'],
+            '欠料金额(RMB)': [total_amount]
+        })
+        color_map = {'8-9月': '#4A90E2'}
+        title = "📈 8-9月欠料金额总览"
+    else:
+        # 原格式：8月vs9月对比
+        monthly_data = detail_df.groupby('月份')['欠料金额(RMB)'].sum().reset_index()
+        color_map = {'8月': '#4A90E2', '9月': '#7ED321'}
+        title = "📈 8月vs9月欠料金额对比"
     
     fig = px.bar(
         monthly_data,
         x='月份',
         y='欠料金额(RMB)',
-        title="📈 8月vs9月欠料金额对比",
+        title=title,
         color='月份',
-        color_discrete_map={'8月': '#4A90E2', '9月': '#7ED321'},
+        color_discrete_map=color_map,
         text='欠料金额(RMB)'
     )
     
@@ -334,7 +389,7 @@ def create_supplier_ranking_chart(detail_df):
         '生产订单号': 'nunique'
     }).reset_index()
     
-    supplier_ranking.columns = ['供应商', '欠料金额', '订单数量']
+    supplier_ranking.columns = ['供应商', '欠料金额', '数量Pcs']
     supplier_ranking = supplier_ranking.sort_values('欠料金额', ascending=True).tail(10)
     
     fig = px.bar(
@@ -451,7 +506,13 @@ def main():
                 )
                 
                 # 预算执行进度
-                aug_actual = detail_df[detail_df['月份'] == '8月']['欠料金额(RMB)'].sum()
+                # 获取8月相关数据，兼容新旧格式
+                if '涉及月份' in detail_df.columns:
+                    aug_filter = detail_df['涉及月份'].str.contains('8月', na=False)
+                else:
+                    aug_filter = (detail_df['月份'] == '8月') | (detail_df['月份'] == '8-9月')
+                
+                aug_actual = detail_df[aug_filter]['欠料金额(RMB)'].sum()
                 budget_progress = min(aug_actual / (budget_target * 10000) * 100, 100) if budget_target > 0 else 0
                 
                 st.markdown(f"""
@@ -508,14 +569,24 @@ def main():
                                            min_value=data_min_date if 'data_min_date' in locals() else None,
                                            max_value=data_max_date if 'data_max_date' in locals() else None)
                 with col3:
-                    month_filter = st.selectbox("月份快选", ["全部", "8月", "9月"], key="order_month")
+                    month_filter = st.selectbox("月份快选", ["全部", "8月", "9月", "8月,9月"], key="order_month")
                 
                 # 基础数据展示
                 detail_df = data_dict['1_订单缺料明细'].copy()
                 
                 # 时间筛选逻辑
                 if month_filter != "全部":
-                    detail_df = detail_df[detail_df['月份'] == month_filter]
+                    # 兼容新旧月份字段
+                    month_col = '涉及月份' if '涉及月份' in detail_df.columns else '月份'
+                    if month_filter == "8月,9月":
+                        # 查找包含8月,9月的记录
+                        detail_df = detail_df[detail_df[month_col].str.contains('8月,9月', na=False)]
+                    else:
+                        # 精确匹配或包含匹配
+                        detail_df = detail_df[
+                            (detail_df[month_col] == month_filter) | 
+                            (detail_df[month_col].str.contains(month_filter, na=False))
+                        ]
                 else:
                     # 按日期区间筛选
                     detail_df['客户交期_date'] = pd.to_datetime(detail_df['客户交期'], errors='coerce').dt.date
@@ -529,6 +600,7 @@ def main():
                 summary_df = detail_df.groupby('生产订单号').agg({
                     '客户订单号': 'first',
                     '产品型号': 'first', 
+                    '数量Pcs': 'first',  # 添加数量Pcs字段
                     '欠料金额(RMB)': 'sum',
                     '客户交期': 'first',
                     '目的地': 'first',
@@ -665,10 +737,15 @@ def main():
                 display_df = filtered_df.copy()
                 display_df['欠料金额(RMB)'] = display_df['欠料金额(RMB)'].apply(format_currency)
                 
-                # 格式化订单金额 - 直接重命名显示
+                # 格式化订单金额 - 添加USD和RMB显示
                 if '订单金额(RMB)' in display_df.columns:
                     display_df['预期回款(RMB)'] = display_df['订单金额(RMB)'].apply(
                         lambda x: format_currency(x) if pd.notna(x) else '待补充'
+                    )
+                
+                if '订单金额(USD)' in display_df.columns:
+                    display_df['预期回款(USD)'] = display_df['订单金额(USD)'].apply(
+                        lambda x: f"${x:,.2f}" if pd.notna(x) else '待补充'
                     )
                 
                 # 格式化投入产出比 - 直接重命名显示 
@@ -677,9 +754,20 @@ def main():
                         lambda x: f"{x:.2f}" if pd.notna(x) and x != float('inf') else '待补充'
                     )
                 
-                # 选择显示列（隐藏产品型号，突出关键信息）
-                display_columns = ['生产订单号', '客户订单号', '客户交期', '欠料金额(RMB)', 
-                                 '预期回款(RMB)', '投入产出比', '数据完整性标记', '目的地']
+                # 选择显示列，根据可用字段动态调整
+                display_columns = ['生产订单号', '客户订单号', '客户交期', '欠料金额(RMB)']
+                
+                # 添加月份字段
+                if '涉及月份' in display_df.columns:
+                    display_columns.append('涉及月份')
+                elif '月份' in display_df.columns:
+                    display_columns.append('月份')
+                
+                # 添加回款相关字段
+                if '预期回款(USD)' in display_df.columns:
+                    display_columns.append('预期回款(USD)')
+                display_columns.extend(['预期回款(RMB)', '投入产出比', '数据完整性标记', '目的地'])
+                
                 available_columns = [col for col in display_columns if col in display_df.columns]
                 
                 # 新增：Expander展开式订单查看
@@ -724,13 +812,16 @@ def main():
                 else:  # 生产订单号
                     expander_orders = expander_orders.sort_values('生产订单号')
                 
-                # 分页处理
+                # 分页处理 - 重构版本
                 total_orders = len(expander_orders)
+                current_page = 1  # 默认值，确保始终被定义
+                
                 if per_page != "全部":
                     per_page = int(per_page)
                     total_pages = (total_orders + per_page - 1) // per_page
                     
                     if total_pages > 1:
+                        # 显示分页控件
                         page_col1, page_col2, page_col3 = st.columns([1, 2, 1])
                         with page_col2:
                             current_page = st.select_slider(
@@ -740,17 +831,24 @@ def main():
                                 key="expander_page"
                             )
                         
+                        # 应用分页
                         start_idx = (current_page - 1) * per_page
                         end_idx = start_idx + per_page
                         expander_orders = expander_orders.iloc[start_idx:end_idx]
-                else:
-                    current_page = 1
+                    # else: 只有1页，使用默认值 current_page = 1
+                # else: 显示全部，使用默认值 current_page = 1
                 
-                # 显示状态信息
+                # 显示状态信息 - 改进版本
                 if len(expander_orders) > 0:
-                    status_info = f"📊 显示 {len(expander_orders)} 个订单"
                     if per_page != "全部":
-                        status_info += f"（第 {current_page} 页，共 {total_orders} 个）"
+                        per_page_int = int(per_page)
+                        total_pages = (total_orders + per_page_int - 1) // per_page_int
+                        if total_pages > 1:
+                            status_info = f"📊 显示第 {current_page} 页（{len(expander_orders)} 个订单），总计 {total_orders} 个订单"
+                        else:
+                            status_info = f"📊 显示 {len(expander_orders)} 个订单（共1页）"
+                    else:
+                        status_info = f"📊 显示全部 {len(expander_orders)} 个订单"
                     st.info(status_info)
                 else:
                     st.warning("🔍 没有找到匹配的订单，请调整筛选条件")
@@ -813,7 +911,11 @@ def main():
                             with col1:
                                 st.metric("客户订单", str(order_row['客户订单号']))
                             with col2:
-                                st.metric("订单数量", f"{order_row['订单数量']:,}")
+                                order_qty = order_row.get('数量Pcs', 0)
+                                if pd.notna(order_qty) and order_qty != 0:
+                                    st.metric("数量Pcs", f"{int(order_qty):,}")
+                                else:
+                                    st.metric("数量Pcs", "待补充")
                             with col3:
                                 full_delivery = order_row['客户交期']
                                 if pd.notna(full_delivery) and isinstance(full_delivery, pd.Timestamp):
@@ -840,9 +942,12 @@ def main():
                             
                             # 按供应商分组展示
                             suppliers = order_details['主供应商名称'].unique()
+                            # 过滤掉NaN值并转换为字符串
+                            suppliers = [str(sup) for sup in suppliers if pd.notna(sup) and str(sup).strip() != '']
+                            
                             if len(suppliers) > 1:
                                 # 多供应商用标签页
-                                supplier_tabs = st.tabs([f"{sup[:8]}..." if len(sup) > 8 else sup for sup in suppliers])
+                                supplier_tabs = st.tabs([f"{sup[:8]}..." if len(str(sup)) > 8 else str(sup) for sup in suppliers])
                                 
                                 for tab, supplier in zip(supplier_tabs, suppliers):
                                     with tab:
@@ -910,16 +1015,26 @@ def main():
                 with col2:
                     supplier_end_date = st.date_input("结束日期", value=supplier_default_end, key="supplier_end")
                 with col3:
-                    supplier_month_filter = st.selectbox("月份快选", ["全部", "8月", "9月"], key="supplier_month")
+                    supplier_month_filter = st.selectbox("月份快选", ["全部", "8月", "9月", "8月,9月"], key="supplier_month")
                 with col4:
-                    supplier_sort_by = st.selectbox("排序方式", ["采购金额", "订单数量", "供应商名称"], key="supplier_sort")
+                    supplier_sort_by = st.selectbox("排序方式", ["采购金额", "数量Pcs", "供应商名称"], key="supplier_sort")
                 
                 # 获取供应商维度数据
                 supplier_detail_df = data_dict['1_订单缺料明细'].copy()
                 
                 # 时间筛选逻辑
                 if supplier_month_filter != "全部":
-                    supplier_detail_df = supplier_detail_df[supplier_detail_df['月份'] == supplier_month_filter]
+                    # 兼容新旧月份字段
+                    month_col = '涉及月份' if '涉及月份' in supplier_detail_df.columns else '月份'
+                    if supplier_month_filter == "8月,9月":
+                        # 查找包含8月,9月的记录
+                        supplier_detail_df = supplier_detail_df[supplier_detail_df[month_col].str.contains('8月,9月', na=False)]
+                    else:
+                        # 精确匹配或包含匹配
+                        supplier_detail_df = supplier_detail_df[
+                            (supplier_detail_df[month_col] == supplier_month_filter) | 
+                            (supplier_detail_df[month_col].str.contains(supplier_month_filter, na=False))
+                        ]
                 else:
                     # 按日期区间筛选
                     supplier_detail_df['客户交期_date'] = pd.to_datetime(supplier_detail_df['客户交期'], errors='coerce').dt.date
@@ -943,14 +1058,14 @@ def main():
                 supplier_summary = supplier_summary.reset_index(drop=True)
                 
                 # 添加统计列
-                supplier_summary['订单数量'] = supplier_summary['生产订单号'].apply(len)
+                supplier_summary['数量Pcs'] = supplier_summary['生产订单号'].apply(len)
                 supplier_summary['客户数量'] = supplier_summary['客户订单号'].apply(len)
                 
                 # 排序
                 if supplier_sort_by == "采购金额":
                     supplier_summary = supplier_summary.sort_values('欠料金额(RMB)', ascending=False)
-                elif supplier_sort_by == "订单数量":
-                    supplier_summary = supplier_summary.sort_values('订单数量', ascending=False)
+                elif supplier_sort_by == "数量Pcs":
+                    supplier_summary = supplier_summary.sort_values('数量Pcs', ascending=False)
                 else:
                     supplier_summary = supplier_summary.sort_values('主供应商名称')
                 
@@ -961,7 +1076,7 @@ def main():
                 with col_export2:
                     if len(supplier_summary) > 0:
                         # 创建导出用的简化数据
-                        export_df = supplier_summary[['主供应商名称', '欠料金额(RMB)', '订单数量', '客户数量', '月份']].copy()
+                        export_df = supplier_summary[['主供应商名称', '欠料金额(RMB)', '数量Pcs', '客户数量', '月份']].copy()
                         export_df['欠料金额(RMB)'] = export_df['欠料金额(RMB)'].apply(lambda x: f"{x:,.2f}")
                         
                         # 使用BytesIO和GBK编码确保Excel兼容性
@@ -991,7 +1106,7 @@ def main():
                 # 供应商展开列表
                 for idx, supplier_row in supplier_summary.iterrows():
                     formatted_amount = format_currency(supplier_row['欠料金额(RMB)'])
-                    supplier_title = f"🏭 {supplier_row['主供应商名称']} | 💰{formatted_amount} | 📋{supplier_row['订单数量']}个订单"
+                    supplier_title = f"🏭 {supplier_row['主供应商名称']} | 💰{formatted_amount} | 📋{supplier_row['数量Pcs']}个订单"
                     
                     with st.expander(supplier_title):
                         # 供应商基本信息
@@ -999,7 +1114,7 @@ def main():
                         with col1:
                             st.metric("💰 采购总金额", formatted_amount)
                         with col2:
-                            st.metric("📋 涉及订单", f"{supplier_row['订单数量']}个")
+                            st.metric("📋 涉及订单", f"{supplier_row['数量Pcs']}个")
                         with col3:
                             st.metric("🎯 涉及客户", f"{supplier_row['客户数量']}个")
                         
