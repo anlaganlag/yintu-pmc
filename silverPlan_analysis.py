@@ -80,6 +80,21 @@ class ComprehensivePMCAnalyzer:
             print(f"   📊 数据分布: 国内{len(self.orders_df[self.orders_df['数据来源工作表']=='国内'])}条, " +
                   f"柬埔寨{len(self.orders_df[self.orders_df['数据来源工作表']=='柬埔寨'])}条")
             
+            # 检查PSO2501724是否在加载的订单中
+            if 'PSO2501724' in self.orders_df['生产单号'].values:
+                print("   🔍 PSO2501724在订单加载后存在")
+                pso_info = self.orders_df[self.orders_df['生产单号'] == 'PSO2501724'].iloc[0]
+                print(f"   PSO2501724信息: 客户订单={pso_info.get('客户订单号')}, 产品={pso_info.get('产品型号')}, 来源={pso_info.get('数据来源工作表')}")
+            else:
+                print("   ❌ PSO2501724在订单加载后不存在！")
+                print("   检查各个订单文件中的PSO2501724:")
+                for i, df_name in enumerate(['国内8月', '国内9月', '柬埔寨8月', '柬埔寨9月']):
+                    if i < len(orders_data):
+                        if 'PSO2501724' in orders_data[i]['生产单号'].values if '生产单号' in orders_data[i].columns else orders_data[i]['生 產 單 号(  廠方 )'].values:
+                            print(f"     ✅ PSO2501724在{df_name}中找到")
+                        else:
+                            print(f"     ❌ PSO2501724不在{df_name}中")
+            
         except Exception as e:
             print(f"   ❌ 订单数据加载失败: {e}")
             return False
@@ -195,11 +210,20 @@ class ComprehensivePMCAnalyzer:
         result = self.orders_df.copy()
         print(f"1. 主表（订单）: {len(result)}条记录")
         
+        # 检查PSO2501724是否在主表中
+        if 'PSO2501724' in result['生产单号'].values:
+            print("   🔍 PSO2501724在主表中存在")
+        else:
+            print("   ❌ PSO2501724不在主表中")
+        
         # LEFT JOIN 欠料信息
         if not self.shortage_df.empty:
             print("2. LEFT JOIN 欠料信息...")
             result['生产单号_清理'] = result['生产单号'].astype(str).str.strip()
             self.shortage_df['订单编号_清理'] = self.shortage_df['订单编号'].astype(str).str.strip()
+            
+            # 记录JOIN前的记录数
+            before_join = len(result)
             
             result = result.merge(
                 self.shortage_df,
@@ -208,8 +232,20 @@ class ComprehensivePMCAnalyzer:
                 how='left'
             )
             
+            # 检查JOIN后PSO2501724的状态
+            after_join = len(result)
+            if 'PSO2501724' in result['生产单号'].values:
+                pso_rows = result[result['生产单号'] == 'PSO2501724']
+                print(f"   🔍 PSO2501724 JOIN后: {len(pso_rows)}条记录")
+                if len(pso_rows) > 0:
+                    has_material = pso_rows['物料编号'].notna().any()
+                    print(f"   PSO2501724 欠料状态: {'有欠料' if has_material else '无欠料'}")
+            else:
+                print("   ❌ PSO2501724在LEFT JOIN后丢失！")
+            
             matched_shortage = len(result[result['物料编号'].notna()])
             print(f"   ✅ 匹配到欠料信息: {matched_shortage}条记录")
+            print(f"   📊 JOIN前后记录数: {before_join} → {after_join}")
         else:
             print("2. ⚠️ 跳过欠料匹配（欠料表为空）")
             # 添加空的欠料字段
@@ -322,18 +358,52 @@ class ComprehensivePMCAnalyzer:
         # 3. 按订单计算每元投入回款
         print("3. 计算每元投入回款（按订单汇总）...")
         
-        # 按生产订单号汇总欠料金额，但订单金额已经去重
-        order_totals = self.final_result.groupby('生产单号').agg({
-            '订单金额(RMB)': 'first',  # 订单金额已经按客户订单号去重
-            '欠料金额(RMB)': 'sum'
+        # 按生产订单号汇总，正确处理订单金额聚合
+        # 先按生产订单号和客户订单号组合去重，然后按生产订单号汇总
+        print("   正在处理生产订单与客户订单的一对多关系...")
+        
+        # 第一步：按生产订单号+客户订单号去重，确保每个客户订单只计算一次
+        unique_combinations = self.final_result.groupby(['生产单号', '客户订单号']).agg({
+            '订单金额(RMB)': 'first',   # 每个客户订单只取一次金额
+            '欠料金额(RMB)': 'sum'      # 欠料金额需要汇总（同一客户订单可能缺多种物料）
         }).reset_index()
         
-        # 计算ROI
-        order_totals['每元投入回款'] = np.where(
-            order_totals['欠料金额(RMB)'] > 0,
-            order_totals['订单金额(RMB)'] / order_totals['欠料金额(RMB)'],
-            0
-        )
+        # 第二步：按生产订单号汇总，正确聚合多个客户订单的金额
+        order_totals = unique_combinations.groupby('生产单号').agg({
+            '订单金额(RMB)': 'sum',     # ✅ 汇总同一生产订单下所有客户订单的金额
+            '欠料金额(RMB)': 'sum'      # ✅ 汇总同一生产订单下所有欠料金额
+        }).reset_index()
+        
+        # 检查一对多关系统计
+        prod_cust_mapping = self.final_result.groupby('生产单号')['客户订单号'].nunique()
+        multi_customer_orders = prod_cust_mapping[prod_cust_mapping > 1]
+        
+        if len(multi_customer_orders) > 0:
+            print(f"   ✅ 正确处理了{len(multi_customer_orders)}个生产订单的多客户订单关系")
+            for prod_order in multi_customer_orders.index[:3]:  # 显示前3个例子
+                prod_data = self.final_result[self.final_result['生产单号'] == prod_order]
+                customer_count = prod_data['客户订单号'].nunique()
+                total_amount = order_totals[order_totals['生产单号'] == prod_order]['订单金额(RMB)'].iloc[0]
+                print(f"      {prod_order}: {customer_count}个客户订单 → 总金额 ¥{total_amount:,.2f}")
+        else:
+            print("   ℹ️  所有生产订单都是一对一关系")
+        
+        # 计算ROI - 区分无需投入和需要投入的订单
+        def calculate_roi(row):
+            shortage_amount = row['欠料金额(RMB)']
+            order_amount = row['订单金额(RMB)']
+            
+            if shortage_amount > 0:
+                # 需要投入：返回具体倍数
+                return order_amount / shortage_amount
+            elif pd.notna(order_amount) and order_amount > 0:
+                # 有订单金额但无欠料：返回特殊标记（用-1表示无需投入）
+                return -1  # 特殊值，后续转换为"无需投入"
+            else:
+                # 无订单金额：返回0
+                return 0
+                
+        order_totals['每元投入回款'] = order_totals.apply(calculate_roi, axis=1)
         
         # 将ROI合并回主表
         self.final_result = self.final_result.merge(
@@ -350,13 +420,23 @@ class ComprehensivePMCAnalyzer:
             has_price = pd.notna(row['RMB单价']) and row['RMB单价'] > 0
             has_supplier = pd.notna(row['主供应商名称'])
             has_order_amount = pd.notna(row['订单金额(USD)']) and row['订单金额(USD)'] > 0
+            has_production_order = pd.notna(row['生产单号']) and row['生产单号'] != ''
             
             if has_shortage and has_price and has_supplier and has_order_amount:
                 return "完整"
             elif has_shortage and has_price and has_order_amount:
                 return "部分"
+            elif has_order_amount and not has_shortage:
+                # 有订单金额但无欠料 = 不缺料订单，应标记为"完整"
+                return "完整"
             elif has_order_amount:
                 return "订单完整"
+            elif has_production_order and not has_shortage:
+                # 有生产订单号但无欠料且无订单金额 = 不缺料但订单信息不完整
+                return "不缺料订单"
+            elif has_production_order:
+                # 有生产订单号但缺少订单金额
+                return "订单信息不完整"
             else:
                 return "无数据"
         
@@ -388,8 +468,11 @@ class ComprehensivePMCAnalyzer:
         """应用保守填充策略"""
         result = df.copy()
         
-        # 1. 过滤掉"无数据"记录
-        result = result[result['数据完整性标记'] != '无数据']
+        # 1. 过滤掉"无数据"记录，但保留所有有生产订单号的记录
+        # 只过滤真正无效的记录
+        result = result[
+            result['数据完整性标记'] != '无数据'
+        ]
         
         # 2. 数值字段统一填0
         numeric_fields = [
@@ -413,10 +496,11 @@ class ComprehensivePMCAnalyzer:
             if field in result.columns:
                 result[field] = result[field].astype(str).replace('nan', '').replace('None', '')
         
-        # 4. ROI特殊处理：欠料为0时显示"无需投入"
-        result['每元投入回款'] = result.apply(lambda row:
-            '无需投入' if pd.to_numeric(row.get('欠料金额(RMB)', 0), errors='coerce') == 0
-            else row.get('每元投入回款', 0), axis=1)
+        # 4. 处理ROI显示：将特殊值转换为业务术语
+        print("   处理ROI显示格式...")
+        result['每元投入回款'] = result['每元投入回款'].apply(lambda x:
+            '无需投入' if pd.to_numeric(x, errors='coerce') == -1  # 特殊标记
+            else x)
         
         # 5. 添加业务标记字段
         def get_data_source_mark(row):
@@ -427,7 +511,8 @@ class ComprehensivePMCAnalyzer:
                 marks.append('缺失供应商')
             if pd.to_numeric(row.get('RMB单价', 0), errors='coerce') == 0:
                 marks.append('填充价格')
-            if row.get('每元投入回款') == '无需投入':
+            # 基于订单级别ROI判断，而不是单行欠料金额
+            if pd.to_numeric(row.get('每元投入回款', 0), errors='coerce') == 0:
                 marks.append('无需投入')
             return '; '.join(marks) if marks else '原始数据'
         
@@ -443,8 +528,22 @@ class ComprehensivePMCAnalyzer:
             print("❌ 没有分析结果数据")
             return None
         
+        # 检查PSO2501724在填充前的状态
+        if 'PSO2501724' in self.final_result['生产单号'].values:
+            pso_before = self.final_result[self.final_result['生产单号'] == 'PSO2501724']
+            print(f"   🔍 填充前PSO2501724: {len(pso_before)}条, 完整性标记: {pso_before['数据完整性标记'].iloc[0] if len(pso_before) > 0 else 'N/A'}")
+        else:
+            print("   ❌ PSO2501724在填充前已丢失！")
+        
         # 应用保守填充策略
         processed_data = self.apply_conservative_filling(self.final_result)
+        
+        # 检查PSO2501724在填充后的状态
+        if 'PSO2501724' in processed_data['生产单号'].values:
+            pso_after = processed_data[processed_data['生产单号'] == 'PSO2501724']
+            print(f"   🔍 填充后PSO2501724: {len(pso_after)}条")
+        else:
+            print("   ❌ PSO2501724在填充后丢失！")
         
         # 选择输出字段
         output_columns = [
@@ -503,7 +602,14 @@ class ComprehensivePMCAnalyzer:
         report_df = pd.DataFrame(report_data)
         
         print(f"   📊 综合报表记录数: {len(report_df)} (已过滤无数据记录)")
-        print(f"   📊 涉及订单数: {report_df['生产订单号'].nunique()}")
+        unique_orders_in_report = report_df['生产订单号'].nunique()
+        print(f"   📊 涉及订单数: {unique_orders_in_report}")
+        
+        # 检查PSO2501724是否在最终报表中
+        if 'PSO2501724' in report_df['生产订单号'].values:
+            print("   ✅ PSO2501724在最终报表中")
+        else:
+            print("   ❌ PSO2501724不在最终报表中！")
         
         # 显示数据填充统计
         fill_stats = report_df['数据填充标记'].value_counts()

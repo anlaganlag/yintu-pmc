@@ -15,7 +15,11 @@ import numpy as np
 import io
 import os
 import tempfile
+import time
+import traceback
 from datetime import datetime
+from contextlib import contextmanager
+from typing import Dict, Any, Optional
 
 # 页面配置 - 必须在任何Streamlit组件之前
 st.set_page_config(
@@ -25,27 +29,158 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 初始化session state
-if 'password_correct' not in st.session_state:
-    st.session_state.password_correct = None
+class RobustSessionManager:
+    """健壮的Session管理器 - 解决SessionInfo初始化问题"""
+    
+    def __init__(self):
+        self.retry_delays = [0.05, 0.1, 0.3, 0.8]  # 指数退避
+        self.max_init_attempts = 5
+        
+    def initialize(self):
+        """安全初始化 - 多重保护机制"""
+        attempts = 0
+        while attempts < self.max_init_attempts:
+            try:
+                # 1. 预检查Streamlit运行时状态
+                if not hasattr(st, 'session_state'):
+                    raise RuntimeError("Streamlit session_state不可用")
+                    
+                # 2. 原子性初始化所有状态
+                self._atomic_init()
+                
+                # 3. 验证初始化成功
+                if self._verify_initialization():
+                    break
+                    
+            except Exception as e:
+                attempts += 1
+                if "SessionInfo" in str(e) and attempts < self.max_init_attempts:
+                    delay = self.retry_delays[min(attempts-1, len(self.retry_delays)-1)]
+                    time.sleep(delay)
+                    continue
+                elif attempts >= self.max_init_attempts:
+                    st.error(f"❌ Session初始化失败 (尝试{attempts}次): {e}")
+                    st.stop()
+                else:
+                    raise
+    
+    def _atomic_init(self):
+        """原子性状态初始化"""
+        defaults = {
+            'password_correct': None,
+            'show_upload': False,
+            'upload_complete': False,
+            'session_ready': True,
+            'last_init_time': time.time(),
+            'rerun_lock': False,
+            'selected_orders': set(),
+            'last_date_filter': None
+        }
+        
+        for key, value in defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = value
+    
+    def _verify_initialization(self):
+        """验证初始化是否成功"""
+        required_keys = ['password_correct', 'show_upload', 'upload_complete', 'session_ready']
+        return all(key in st.session_state for key in required_keys)
+    
+    @contextmanager
+    def rerun_protection(self):
+        """重新运行保护上下文"""
+        if st.session_state.get('rerun_lock', False):
+            yield False  # 阻止重复rerun
+            return
+            
+        try:
+            st.session_state.rerun_lock = True
+            yield True
+        finally:
+            # 延迟释放锁，防止竞态条件
+            time.sleep(0.05)
+            if 'rerun_lock' in st.session_state:
+                st.session_state.rerun_lock = False
+    
+    def safe_rerun(self, force=False):
+        """最安全的重新运行机制"""
+        if not force:
+            with self.rerun_protection() as can_rerun:
+                if not can_rerun:
+                    return
+        
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                # 短暂延迟让SessionInfo稳定
+                time.sleep(0.05 + attempt * 0.05)
+                st.rerun()
+                break
+            except Exception as e:
+                if "SessionInfo" in str(e) and attempt < max_attempts - 1:
+                    time.sleep(0.2 * (attempt + 1))
+                    continue
+                else:
+                    st.error(f"🔄 页面刷新失败: {e}")
+                    break
+    
+    def safe_get_state(self, key: str, default=None):
+        """安全获取session状态"""
+        try:
+            return st.session_state.get(key, default)
+        except Exception as e:
+            if "SessionInfo" in str(e):
+                # 如果SessionInfo未初始化，返回默认值
+                return default
+            raise
+    
+    def safe_set_state(self, key: str, value):
+        """安全设置session状态"""
+        try:
+            st.session_state[key] = value
+            return True
+        except Exception as e:
+            if "SessionInfo" in str(e):
+                st.warning(f"状态设置失败 {key}: SessionInfo未初始化")
+                return False
+            raise
+
+# 全局管理器实例
+session_mgr = RobustSessionManager()
+
+# 应用启动时初始化
+session_mgr.initialize()
 
 def check_password():
     """简单密码认证"""
+    # 确保session已准备就绪
+    if not session_mgr.safe_get_state("session_ready", False):
+        st.info("🔄 正在初始化系统...")
+        time.sleep(0.1)  # 短暂等待
+        session_mgr.safe_rerun()
+        return False
     def password_entered():
-        if st.session_state["password"] == "silverplan123":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
+        if session_mgr.safe_get_state("password", "") == "silverplan123":
+            session_mgr.safe_set_state("password_correct", True)
+            if session_mgr.safe_get_state("password") is not None:
+                # 安全删除密码
+                try:
+                    if "password" in st.session_state:
+                        del st.session_state["password"]
+                except:
+                    pass  # 忽略删除失败
         else:
-            st.session_state["password_correct"] = False
+            session_mgr.safe_set_state("password_correct", False)
 
-    if "password_correct" not in st.session_state:
+    # 使用统一的检查方式
+    if session_mgr.safe_get_state("password_correct") is None:
         st.markdown("### 🔐 银图PMC智能分析平台 - 访问验证")
         st.text_input("请输入访问密码", type="password", 
                      on_change=password_entered, key="password", 
                      placeholder="输入密码以访问系统")
         st.info("请联系系统管理员获取访问密码")
         return False
-    elif not st.session_state["password_correct"]:
+    elif session_mgr.safe_get_state("password_correct") is False:
         st.markdown("### 🔐 银图PMC智能分析平台 - 访问验证")
         st.error("❌ 密码错误，请重新输入")
         st.text_input("请输入正确的访问密码", type="password", 
@@ -70,8 +205,12 @@ with header_col2:
 with header_col3:
     st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
     if st.button("🔄 刷新数据", help="重新加载最新的订单金额数据"):
-        st.cache_data.clear()
-        st.rerun()
+        try:
+            st.cache_data.clear()
+            time.sleep(0.1)  # 让缓存清理完成
+        except Exception as e:
+            st.warning(f"缓存清理失败: {e}")
+        session_mgr.safe_rerun()
 
 # 自定义CSS - 清新风格
 st.markdown("""
@@ -610,13 +749,13 @@ def show_upload_interface():
         with col_cancel:
             if st.button("❌ 取消上传", use_container_width=True):
                 st.session_state.show_upload = False
-                st.rerun()
+                session_mgr.safe_rerun()
     
     else:
         st.warning(f"⚠️ 请上传所有 {required_count} 个必需文件后再开始分析")
         if st.button("❌ 取消上传"):
             st.session_state.show_upload = False
-            st.rerun()
+            session_mgr.safe_rerun()
     
     return None
 
@@ -813,7 +952,11 @@ def process_uploaded_files(uploaded_files):
         
         # 重置上传状态并刷新数据
         st.session_state.show_upload = False
-        st.cache_data.clear()
+        try:
+            st.cache_data.clear()
+            time.sleep(0.1)  # 让缓存清理完成
+        except Exception as e:
+            st.warning(f"缓存清理失败: {e}")
         
         # 显示成功消息
         if result:
@@ -822,7 +965,7 @@ def process_uploaded_files(uploaded_files):
             st.balloons()
             
             # 延迟刷新页面以显示新数据
-            st.rerun()
+            session_mgr.safe_rerun()
         else:
             st.error("❌ 分析过程中出现错误，请检查数据格式")
         
@@ -861,7 +1004,7 @@ def main():
         with col2:
             if st.button("📤 上传数据文件开始分析", type="primary", use_container_width=True):
                 st.session_state.show_upload = True
-                st.rerun()
+                session_mgr.safe_rerun()
         
         st.info("""
         **💡 使用说明:**
@@ -975,11 +1118,13 @@ def main():
                 with col1:
                     start_date = st.date_input("开始日期", value=default_start, 
                                              min_value=data_min_date if 'data_min_date' in locals() else None,
-                                             max_value=data_max_date if 'data_max_date' in locals() else None)
+                                             max_value=data_max_date if 'data_max_date' in locals() else None,
+                                             key="start_date_filter")
                 with col2:
                     end_date = st.date_input("结束日期", value=default_end,
                                            min_value=data_min_date if 'data_min_date' in locals() else None,
-                                           max_value=data_max_date if 'data_max_date' in locals() else None)
+                                           max_value=data_max_date if 'data_max_date' in locals() else None,
+                                           key="end_date_filter")
                 with col3:
                     month_filter = st.selectbox("月份快选", ["全部", "8月", "9月", "8月,9月"], key="order_month")
                 
@@ -1025,6 +1170,35 @@ def main():
                 
                 # 初始化filtered_df（修复变量引用错误）
                 filtered_df = summary_df.copy()
+                
+                # 计算关键统计数据 - 包括不缺料订单的回款金额
+                no_shortage_orders = summary_df[summary_df['欠料金额(RMB)'] == 0]
+                no_shortage_return = no_shortage_orders['订单金额(RMB)'].sum() if len(no_shortage_orders) > 0 else 0
+                no_shortage_count = len(no_shortage_orders)
+                
+                # 显示汇总统计信息 - 管理层关键指标
+                st.markdown("#### 📊 管理层关键指标")
+                metric_cols = st.columns(5)
+                with metric_cols[0]:
+                    total_orders = len(summary_df)
+                    st.metric("📦 总订单数", f"{total_orders}个", 
+                             help=f"当前筛选范围内的所有订单")
+                with metric_cols[1]:
+                    total_shortage = summary_df[summary_df['欠料金额(RMB)'] > 0]['欠料金额(RMB)'].sum()
+                    st.metric("💰 缺料投入", format_currency(total_shortage),
+                             help="需要采购的物料金额")
+                with metric_cols[2]:
+                    total_return_all = summary_df['订单金额(RMB)'].sum()
+                    st.metric("💵 预期总回款", format_currency(total_return_all),
+                             help="所有订单的预期回款金额")
+                with metric_cols[3]:
+                    st.metric("✅ 不缺料订单", f"{no_shortage_count}个",
+                             help="无需采购即可生产的订单")
+                with metric_cols[4]:
+                    no_shortage_ratio = (no_shortage_return / total_return_all * 100) if total_return_all > 0 else 0
+                    st.metric("🎯 不缺料回款", format_currency(no_shortage_return),
+                             delta=f"{no_shortage_ratio:.1f}%",
+                             help="不缺料订单的预期回款占比")
                 
                 # 显示筛选状态和导出功能
                 col_export1, col_export2, col_export3 = st.columns([3, 0.8, 0.8])
@@ -1099,11 +1273,21 @@ def main():
                 with col_reset:
                     st.markdown("<br>", unsafe_allow_html=True)  # 对齐按钮位置
                     if st.button("🔄 重置", help="清除所有筛选条件"):
-                        st.rerun()
+                        session_mgr.safe_rerun()
                 
                 # 应用筛选和排序
                 filtered_df = summary_df.copy()
                 filter_applied = False
+                
+                # 检查日期筛选是否改变，如果改变则自动选中筛选后的订单
+                date_filter_key = f"{start_date}_{end_date}_{month_filter}"
+                if 'last_date_filter' not in st.session_state or st.session_state.last_date_filter != date_filter_key:
+                    # 日期筛选改变了，自动选中所有筛选后的订单（但先要应用不缺料筛选）
+                    temp_filtered = summary_df.copy()
+                    if not show_no_shortage:
+                        temp_filtered = temp_filtered[temp_filtered['欠料金额(RMB)'] > 0]
+                    st.session_state.selected_orders = set(temp_filtered['生产订单号'].tolist())
+                    st.session_state.last_date_filter = date_filter_key
                 
                 # 不缺料订单筛选
                 if show_no_shortage:
@@ -1154,8 +1338,8 @@ def main():
                 else:  # 欠料金额降序
                     filtered_df = filtered_df.sort_values('欠料金额(RMB)', ascending=False)
                 
-                # 初始化选中订单的session state（筛选重置时清空）
-                if 'selected_orders' not in st.session_state or filter_applied:
+                # 筛选重置时清空选中订单
+                if filter_applied:
                     st.session_state.selected_orders = set()
                 
                 # 多选ROI分析功能
@@ -1169,7 +1353,7 @@ def main():
                     st.markdown("#### 📋 订单选择")
                     
                     # 全选功能
-                    col_select_all, col_info = st.columns([1, 3])
+                    col_select_all, col_info, col_auto_sync = st.columns([1, 2, 2])
                     with col_select_all:
                         select_all = st.checkbox("全选", key="select_all_orders")
                         if select_all:
@@ -1181,6 +1365,9 @@ def main():
                         selected_count = len(st.session_state.selected_orders)
                         total_count = len(filtered_df)
                         st.markdown(f"**已选择**: {selected_count}/{total_count} 个订单")
+                    
+                    with col_auto_sync:
+                        st.info("🔄 日期筛选后自动勾选对应订单")
                     
                     # 订单选择表格
                     selection_data = []
@@ -1322,7 +1509,7 @@ def main():
                         # 清除选择按钮
                         if st.button("🗑️ 清除选择", use_container_width=True):
                             st.session_state.selected_orders = set()
-                            st.rerun()
+                            session_mgr.safe_rerun()
                 
                 # 分隔线，分隔多选ROI功能和详细查看功能
                 st.markdown("---")
