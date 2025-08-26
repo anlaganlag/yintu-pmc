@@ -13,6 +13,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import io
+import os
+import tempfile
+from datetime import datetime
 
 # 页面配置
 st.set_page_config(
@@ -22,11 +25,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 在标题区域添加刷新按钮
-header_col1, header_col2 = st.columns([4, 1])
+# 在标题区域添加刷新按钮和上传功能
+header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
 with header_col1:
     st.markdown('<div class="main-title">🌟 银图PMC智能分析平台</div>', unsafe_allow_html=True)
 with header_col2:
+    st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
+    if st.button("📤 数据上传", help="上传Excel文件进行分析"):
+        st.session_state.show_upload = True
+with header_col3:
     st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
     if st.button("🔄 刷新数据", help="重新加载最新的订单金额数据"):
         st.cache_data.clear()
@@ -444,6 +451,334 @@ def create_risk_warning_table(detail_df, risk_threshold=500000):
     
     return high_risk
 
+def show_upload_interface():
+    """显示文件上传界面"""
+    st.markdown("### 📤 数据文件上传")
+    
+    # 数据源说明
+    with st.expander("📋 数据源要求说明", expanded=True):
+        st.markdown("""
+        **根据系统要求，请准备以下Excel文件：**
+        
+        1. **订单数据** (必需)
+           - `order-amt-89.xlsx` - 国内订单（包含8月、9月工作表）
+           - `order-amt-89-c.xlsx` - 柬埔寨订单（包含8月-柬、9月-柬工作表）
+        
+        2. **欠料数据** (必需)
+           - `mat_owe_pso.xlsx` - 物料欠料信息
+        
+        3. **库存数据** (必需)  
+           - `inventory_list.xlsx` - 库存价格信息
+        
+        4. **供应商数据** (必需)
+           - `supplier.xlsx` - 供应商价格信息
+        
+        ⚠️ **注意**: 所有文件必须包含正确的列名和数据格式
+        """)
+    
+    # 创建上传区域
+    st.markdown("#### 📁 选择并上传Excel文件")
+    
+    uploaded_files = {}
+    required_files = {
+        "order-amt-89.xlsx": "国内订单文件",
+        "order-amt-89-c.xlsx": "柬埔寨订单文件", 
+        "mat_owe_pso.xlsx": "欠料数据文件",
+        "inventory_list.xlsx": "库存数据文件",
+        "supplier.xlsx": "供应商数据文件"
+    }
+    
+    # 文件上传控件
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("##### 📋 订单相关文件")
+        uploaded_files["order-amt-89.xlsx"] = st.file_uploader(
+            required_files["order-amt-89.xlsx"], 
+            type=['xlsx'], 
+            key="order_domestic"
+        )
+        uploaded_files["order-amt-89-c.xlsx"] = st.file_uploader(
+            required_files["order-amt-89-c.xlsx"], 
+            type=['xlsx'], 
+            key="order_cambodia"
+        )
+        uploaded_files["mat_owe_pso.xlsx"] = st.file_uploader(
+            required_files["mat_owe_pso.xlsx"], 
+            type=['xlsx'], 
+            key="shortage"
+        )
+    
+    with col2:
+        st.markdown("##### 🏭 供应链相关文件")
+        uploaded_files["inventory_list.xlsx"] = st.file_uploader(
+            required_files["inventory_list.xlsx"], 
+            type=['xlsx'], 
+            key="inventory"
+        )
+        uploaded_files["supplier.xlsx"] = st.file_uploader(
+            required_files["supplier.xlsx"], 
+            type=['xlsx'], 
+            key="supplier"
+        )
+    
+    # 检查上传状态
+    uploaded_count = sum(1 for f in uploaded_files.values() if f is not None)
+    required_count = len(required_files)
+    
+    # 上传状态指示器
+    progress = uploaded_count / required_count
+    st.progress(progress)
+    st.markdown(f"**上传进度**: {uploaded_count}/{required_count} 个文件已上传")
+    
+    # 文件状态列表
+    status_col1, status_col2 = st.columns(2)
+    with status_col1:
+        for i, (filename, description) in enumerate(list(required_files.items())[:3]):
+            status = "✅" if uploaded_files[filename] is not None else "⏳"
+            st.markdown(f"{status} {description}")
+    
+    with status_col2:
+        for i, (filename, description) in enumerate(list(required_files.items())[3:]):
+            status = "✅" if uploaded_files[filename] is not None else "⏳"
+            st.markdown(f"{status} {description}")
+    
+    # 分析按钮
+    if uploaded_count == required_count:
+        st.success("🎉 所有文件已上传完成！")
+        
+        col_analyze, col_cancel = st.columns([1, 1])
+        with col_analyze:
+            if st.button("🚀 开始分析", type="primary", use_container_width=True):
+                return process_uploaded_files(uploaded_files)
+        
+        with col_cancel:
+            if st.button("❌ 取消上传", use_container_width=True):
+                st.session_state.show_upload = False
+                st.rerun()
+    
+    else:
+        st.warning(f"⚠️ 请上传所有 {required_count} 个必需文件后再开始分析")
+        if st.button("❌ 取消上传"):
+            st.session_state.show_upload = False
+            st.rerun()
+    
+    return None
+
+def process_uploaded_files(uploaded_files):
+    """处理上传的文件并执行分析"""
+    try:
+        # 显示处理进度
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text("🔄 正在保存上传文件...")
+        progress_bar.progress(0.1)
+        
+        # 保存上传的文件到临时目录
+        temp_dir = tempfile.mkdtemp()
+        saved_files = {}
+        
+        for filename, file_obj in uploaded_files.items():
+            if file_obj is not None:
+                file_path = os.path.join(temp_dir, filename)
+                with open(file_path, 'wb') as f:
+                    f.write(file_obj.read())
+                saved_files[filename] = file_path
+        
+        progress_bar.progress(0.3)
+        status_text.text("📊 正在初始化分析系统...")
+        
+        # 动态导入分析系统
+        import sys
+        sys.path.append('.')
+        
+        # 使用silverPlan_analysis.py作为主分析引擎
+        from silverPlan_analysis import ComprehensivePMCAnalyzer
+        
+        progress_bar.progress(0.4)
+        status_text.text("🔍 正在加载和验证数据...")
+        
+        # 创建分析器实例并修改文件路径
+        analyzer = ComprehensivePMCAnalyzer()
+        
+        # 临时修改分析器的文件路径
+        original_load_method = analyzer.load_all_data
+        
+        def custom_load_data():
+            """自定义数据加载方法"""
+            print("=== 🔄 加载上传数据源 ===")
+            
+            # 1. 加载4个订单工作表
+            print("1. 加载订单数据（国内+柬埔寨）...")
+            try:
+                orders_data = []
+                
+                # 国内订单
+                orders_aug_domestic = pd.read_excel(saved_files['order-amt-89.xlsx'], sheet_name='8月')
+                orders_sep_domestic = pd.read_excel(saved_files['order-amt-89.xlsx'], sheet_name='9月')
+                orders_aug_domestic['月份'] = '8月'
+                orders_aug_domestic['数据来源工作表'] = '国内'
+                orders_sep_domestic['月份'] = '9月'
+                orders_sep_domestic['数据来源工作表'] = '国内'
+                orders_data.extend([orders_aug_domestic, orders_sep_domestic])
+                
+                # 柬埔寨订单
+                orders_aug_cambodia = pd.read_excel(saved_files['order-amt-89-c.xlsx'], sheet_name='8月 -柬')
+                orders_sep_cambodia = pd.read_excel(saved_files['order-amt-89-c.xlsx'], sheet_name='9月 -柬')
+                orders_aug_cambodia['月份'] = '8月'
+                orders_aug_cambodia['数据来源工作表'] = '柬埔寨'
+                orders_sep_cambodia['月份'] = '9月'
+                orders_sep_cambodia['数据来源工作表'] = '柬埔寨'
+                orders_data.extend([orders_aug_cambodia, orders_sep_cambodia])
+                
+                # 合并所有订单
+                analyzer.orders_df = pd.concat(orders_data, ignore_index=True)
+                
+                # 标准化订单表列名
+                analyzer.orders_df = analyzer.orders_df.rename(columns={
+                    '生 產 單 号(  廠方 )': '生产单号',
+                    '生 產 單 号(客方 )': '客户订单号',
+                    '型 號( 廠方/客方 )': '产品型号',
+                    '數 量  (Pcs)': '数量Pcs',
+                    'BOM NO.': 'BOM编号',
+                    '客期': '客户交期'
+                })
+                
+                # 确保订单金额字段存在（USD）
+                if '订单金额' not in analyzer.orders_df.columns:
+                    analyzer.orders_df['订单金额'] = 1000  # 默认1000 USD
+                    print("   ⚠️ 订单表中未找到'订单金额'字段，使用默认值1000 USD")
+                
+                print(f"   ✅ 订单总数: {len(analyzer.orders_df)}条")
+                
+            except Exception as e:
+                print(f"   ❌ 订单数据加载失败: {e}")
+                return False
+            
+            # 2. 加载欠料表
+            print("2. 加载mat_owe_pso.xlsx欠料表...")
+            try:
+                analyzer.shortage_df = pd.read_excel(saved_files['mat_owe_pso.xlsx'], 
+                                                   sheet_name='Sheet1', skiprows=1)
+                
+                # 标准化欠料表列名
+                if len(analyzer.shortage_df.columns) >= 13:
+                    new_columns = ['订单编号', 'P-R对应', 'P-RBOM', '客户型号', 'OTS期', '开拉期', 
+                                  '下单日期', '物料编号', '物料名称', '领用部门', '工单需求', 
+                                  '仓存不足', '已购未返', '手头现有', '请购组']
+                    
+                    for i in range(min(len(new_columns), len(analyzer.shortage_df.columns))):
+                        if i < len(analyzer.shortage_df.columns):
+                            analyzer.shortage_df.rename(columns={analyzer.shortage_df.columns[i]: new_columns[i]}, inplace=True)
+                
+                # 清理欠料数据
+                analyzer.shortage_df = analyzer.shortage_df.dropna(subset=['订单编号'])
+                analyzer.shortage_df = analyzer.shortage_df[~analyzer.shortage_df['物料名称'].astype(str).str.contains('已齐套|齐套', na=False)]
+                
+                print(f"   ✅ 欠料记录: {len(analyzer.shortage_df)}条")
+                
+            except Exception as e:
+                print(f"   ❌ 欠料表加载失败: {e}")
+                analyzer.shortage_df = pd.DataFrame()
+            
+            # 3. 加载库存价格表
+            print("3. 加载inventory_list.xlsx库存表...")
+            try:
+                analyzer.inventory_df = pd.read_excel(saved_files['inventory_list.xlsx'])
+                
+                # 价格处理：优先最新報價，回退到成本單價
+                analyzer.inventory_df['最终价格'] = analyzer.inventory_df['最新報價'].fillna(analyzer.inventory_df['成本單價'])
+                analyzer.inventory_df['最终价格'] = pd.to_numeric(analyzer.inventory_df['最终价格'], errors='coerce').fillna(0)
+                
+                # 货币转换为RMB
+                def convert_to_rmb(row):
+                    price = row['最终价格']
+                    currency = str(row.get('貨幣', 'RMB')).upper()
+                    rate = analyzer.currency_rates.get(currency, 1.0)
+                    return price * rate if pd.notna(price) else 0
+                
+                analyzer.inventory_df['RMB单价'] = analyzer.inventory_df.apply(convert_to_rmb, axis=1)
+                
+                valid_prices = len(analyzer.inventory_df[analyzer.inventory_df['RMB单价'] > 0])
+                print(f"   ✅ 库存物料: {len(analyzer.inventory_df)}条, 有效价格: {valid_prices}条")
+                
+            except Exception as e:
+                print(f"   ❌ 库存表加载失败: {e}")
+                analyzer.inventory_df = pd.DataFrame()
+            
+            # 4. 加载供应商表
+            print("4. 加载supplier.xlsx供应商表...")
+            try:
+                analyzer.supplier_df = pd.read_excel(saved_files['supplier.xlsx'])
+                
+                # 处理供应商价格和货币转换
+                analyzer.supplier_df['单价_数值'] = pd.to_numeric(analyzer.supplier_df['单价'], errors='coerce').fillna(0)
+                
+                def convert_supplier_to_rmb(row):
+                    price = row['单价_数值']
+                    currency = str(row.get('币种', 'RMB')).upper()
+                    rate = analyzer.currency_rates.get(currency, 1.0)
+                    return price * rate if pd.notna(price) else 0
+                
+                analyzer.supplier_df['供应商RMB单价'] = analyzer.supplier_df.apply(convert_supplier_to_rmb, axis=1)
+                
+                # 处理修改日期
+                analyzer.supplier_df['修改日期'] = pd.to_datetime(analyzer.supplier_df['修改日期'], errors='coerce')
+                
+                valid_supplier_prices = len(analyzer.supplier_df[analyzer.supplier_df['供应商RMB单价'] > 0])
+                print(f"   ✅ 供应商记录: {len(analyzer.supplier_df)}条, 有效价格: {valid_supplier_prices}条")
+                print(f"   ✅ 唯一供应商: {analyzer.supplier_df['供应商名称'].nunique()}家")
+                
+            except Exception as e:
+                print(f"   ❌ 供应商表加载失败: {e}")
+                analyzer.supplier_df = pd.DataFrame()
+            
+            print("✅ 上传数据加载完成\n")
+            return True
+        
+        # 替换加载方法
+        analyzer.load_all_data = custom_load_data
+        
+        progress_bar.progress(0.6)
+        status_text.text("🔄 正在执行综合分析...")
+        
+        # 执行完整分析
+        result = analyzer.run_comprehensive_analysis()
+        
+        progress_bar.progress(0.9)
+        status_text.text("✅ 分析完成，正在准备结果...")
+        
+        # 清理临时文件
+        import shutil
+        shutil.rmtree(temp_dir)
+        
+        progress_bar.progress(1.0)
+        status_text.text("🎉 分析成功完成！")
+        
+        # 重置上传状态并刷新数据
+        st.session_state.show_upload = False
+        st.cache_data.clear()
+        
+        # 显示成功消息
+        if result:
+            report_df, filename = result
+            st.success(f"✅ 分析完成！已生成报告: {filename}")
+            st.balloons()
+            
+            # 延迟刷新页面以显示新数据
+            st.rerun()
+        else:
+            st.error("❌ 分析过程中出现错误，请检查数据格式")
+        
+        return result
+        
+    except Exception as e:
+        st.error(f"❌ 处理过程中出现错误: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+        return None
+
 def main():
     """主函数"""
     # 页面标题
@@ -456,9 +791,31 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
+    # 检查是否显示上传界面
+    if st.session_state.get('show_upload', False):
+        show_upload_interface()
+        return
+    
     # 加载数据
     data_dict = load_data()
     if not data_dict:
+        # 如果没有数据，提供上传选项
+        st.warning("⚠️ 未找到分析报告数据")
+        
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("📤 上传数据文件开始分析", type="primary", use_container_width=True):
+                st.session_state.show_upload = True
+                st.rerun()
+        
+        st.info("""
+        **💡 使用说明:**
+        
+        1. 点击"📤 上传数据文件开始分析"按钮
+        2. 上传所需的5个Excel文件（订单、欠料、库存、供应商数据）
+        3. 系统将自动分析并生成报告
+        4. 分析完成后可在此界面查看结果
+        """)
         st.stop()
     
     # 显示KPI面板
