@@ -1,0 +1,20 @@
+# 银图PMC智能分析平台 - Python依赖包
+# Yintu PMC Intelligent Analysis Platform - Python Dependencies
+
+# 数据处理和分析 / Data Processing and Analysis
+pandas==2.2.3
+numpy==1.26.4
+openpyxl==3.1.5  # Excel文件读写 / Excel file I/O
+xlrd==2.0.1      # 旧版Excel文件支持 / Legacy Excel file support
+
+# Web应用框架 / Web Application Framework  
+streamlit==1.40.2
+
+# 数据可视化 / Data Visualization
+plotly==5.24.1
+
+# 开发工具（可选）/ Development Tools (Optional)
+pytest==8.3.3    # 单元测试 / Unit testing
+black==24.10.0   # 代码格式化 / Code formatting
+pylint==3.3.2    # 代码质量检查 / Code quality checking
+mypy==1.13.0     # 类型检查 / Type checking

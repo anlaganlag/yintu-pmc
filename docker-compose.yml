@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  yintu-pmc:
+    build: .
+    container_name: yintu-pmc-platform
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./(全部)8月9月订单.xlsx:/app/(全部)8月9月订单.xlsx
+      - ./mat_owe_pso.xlsx:/app/mat_owe_pso.xlsx
+      - ./owe-mat.xls:/app/owe-mat.xls
+      - ./supplier.xlsx:/app/supplier.xlsx
+      - ./inventory_list.xlsx:/app/inventory_list.xlsx
+    environment:
+      - STREAMLIT_THEME_BASE=light
+      - STREAMLIT_THEME_PRIMARY_COLOR=#4A90E2
+    restart: unless-stopped
+    networks:
+      - yintu-network
+
+networks:
+  yintu-network:
+    driver: bridge
