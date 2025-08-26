@@ -387,16 +387,55 @@ def format_currency(value):
     else:
         return f"¥{value:,.0f}"
 
-def create_kpi_cards(data_dict):
+def create_kpi_cards(data_dict, detail_df=None):
     """创建KPI卡片"""
     if not data_dict or '1_订单缺料明细' not in data_dict:
         return
         
-    detail_df = data_dict['1_订单缺料明细']
+    # 如果提供了筛选后的detail_df，使用它；否则使用原始数据
+    if detail_df is None:
+        detail_df = data_dict['1_订单缺料明细']
     
-    # 计算核心指标
-    total_amount = detail_df['欠料金额(RMB)'].sum()
-    total_orders = detail_df['生产订单号'].nunique()
+    # 先按订单汇总，与管理指标区域保持一致的数据处理逻辑
+    summary_df = detail_df.groupby('生产订单号').agg({
+        '客户订单号': 'first',
+        '产品型号': 'first', 
+        '数量Pcs': 'first',
+        '欠料金额(RMB)': 'sum',
+        '客户交期': 'first',
+        '目的地': 'first',
+        '订单金额(RMB)': 'first',
+        '每元投入回款': 'first',
+        '数据完整性标记': 'first'
+    }).reset_index()
+    
+    # 按生产订单号去重计算真实回款金额（与管理指标区域完全一致）
+    unique_orders = summary_df.groupby('生产订单号').agg({
+        '订单金额(RMB)': 'first',
+        '欠料金额(RMB)': 'first',
+        '数据完整性标记': 'first'   
+    }).reset_index()
+
+    unique_purchase_orders = summary_df.groupby('客户订单号').agg({
+        '订单金额(RMB)': 'first'
+    }).reset_index()
+
+    # 数据健壮性检查：验证订单金额的一致性
+    if '订单金额(RMB)' in detail_df.columns:
+        inconsistent_orders = detail_df.dropna(subset=['订单金额(RMB)'])                             .groupby('生产订单号')['订单金额(RMB)']                             .nunique()
+        inconsistent_orders = inconsistent_orders[inconsistent_orders > 1]
+        if not inconsistent_orders.empty:
+            st.warning(
+                f"⚠️ **数据质量警告:** "
+                f"发现 {len(inconsistent_orders)} 个订单存在多个不同的'订单金额(RMB)'。这可能导致计算不准确。"
+                f"问题订单号: {', '.join(inconsistent_orders.index.tolist())}。"
+                " 报表将使用其中的最大值进行计算。",
+                icon="📊"
+            )
+    
+    # 计算核心指标（基于统一的数据源）
+    total_amount = unique_orders['欠料金额(RMB)'].sum()
+    total_orders = len(unique_orders)
     total_suppliers = detail_df['主供应商名称'].nunique()
     
     # 8月数据（兼容新数据格式）
@@ -407,36 +446,36 @@ def create_kpi_cards(data_dict):
         aug_filter = (detail_df['月份'] == '8月') | (detail_df['月份'] == '8-9月')
     aug_amount = detail_df[aug_filter]['欠料金额(RMB)'].sum()
     
-    # 投入产出分析（新增）
+    # 投入产出分析（使用与管理指标一致的数据源）
     total_order_amount = 0
     avg_return_ratio = 0
     high_return_count = 0
+    no_shortage_return_kpi = 0  # 新增：不缺料订单回款金额
     
-    if '订单金额(RMB)' in detail_df.columns and '欠料金额(RMB)' in detail_df.columns:
-        # 按订单计算正确的ROI，然后加权平均
-        # 1. 按生产订单号汇总每个订单的投入和回报
-        order_summary = detail_df.groupby('生产订单号').agg({
-            '订单金额(RMB)': 'first',  # 每个生产订单的金额
-            '欠料金额(RMB)': 'sum'      # 该订单的总欠料金额
-        }).reset_index()
+    if '订单金额(RMB)' in unique_orders.columns and '欠料金额(RMB)' in unique_orders.columns:
+        # 使用统一的unique_orders数据源，确保与管理指标完全一致
+        # 1. 计算总金额用于显示（与管理指标区域完全相同）
+        total_order_amount = unique_purchase_orders['订单金额(RMB)'].sum()
+        total_shortage_amount = unique_orders['欠料金额(RMB)'].sum()
         
-        # 2. 计算每个订单的ROI
-        order_summary['订单ROI'] = np.where(
-            order_summary['欠料金额(RMB)'] > 0,
-            order_summary['订单金额(RMB)'] / order_summary['欠料金额(RMB)'],
-            0
-        )
-        
-        # 3. 计算总金额用于显示
-        total_order_amount = order_summary['订单金额(RMB)'].sum()
-        total_shortage_amount = order_summary['欠料金额(RMB)'].sum()
-        
-        # 4. 计算加权平均ROI（按投入金额加权）
+        # 2. 计算加权平均ROI（按投入金额加权）
         if total_shortage_amount > 0:
-            weighted_roi = (order_summary['订单ROI'] * order_summary['欠料金额(RMB)']).sum() / total_shortage_amount
-            avg_return_ratio = weighted_roi
+            avg_return_ratio = total_order_amount / total_shortage_amount
         else:
             avg_return_ratio = 0
+        
+        # 3. 计算不缺料订单回款（按客户订单号取最大值）
+        no_shortage_orders_kpi = unique_orders[unique_orders['欠料金额(RMB)'] == 0]
+        if len(no_shortage_orders_kpi) > 0:
+            # 合并客户订单号信息
+            no_shortage_with_customer_kpi = no_shortage_orders_kpi.merge(
+                summary_df[['生产订单号', '客户订单号']].drop_duplicates(), 
+                on='生产订单号', how='left'
+            )
+            # 按客户订单号分组，取最大订单金额
+            no_shortage_return_kpi = no_shortage_with_customer_kpi.groupby('客户订单号')['订单金额(RMB)'].max().sum()
+        else:
+            no_shortage_return_kpi = 0
         
         # 计算高回报项目数量（投入产出比>2）
         if '每元投入回款' in detail_df.columns:
@@ -489,7 +528,8 @@ def create_kpi_cards(data_dict):
                 <div class="metric-label" style="color: white;">💰 平均投资回报</div>
                 <div style="color: white; font-size: 12px; margin-top: 5px;">
                     高回报项目: {high_return_count}个<br>
-                    预期回款: {format_currency(total_order_amount)}
+                    预期总回款: {format_currency(total_order_amount)}<br>
+                    无需投入回款: {format_currency(no_shortage_return_kpi)}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1016,9 +1056,75 @@ def main():
         """)
         st.stop()
     
-    # 显示KPI面板
-    st.markdown("### 📊 核心指标概览")
-    create_kpi_cards(data_dict)
+    # 全局筛选控件
+    if '1_订单缺料明细' in data_dict:
+        st.markdown("### 🔍 数据筛选")
+        
+        base_df = data_dict['1_订单缺料明细']
+        
+        # 智能获取数据日期范围
+        try:
+            date_series = pd.to_datetime(base_df['客户交期'], errors='coerce')
+            data_min_date = date_series.min().date() if date_series.notna().any() else pd.to_datetime('2025-08-01').date()
+            data_max_date = date_series.max().date() if date_series.notna().any() else pd.to_datetime('2025-09-30').date()
+            default_start = data_min_date
+            default_end = data_max_date
+        except:
+            default_start = pd.to_datetime('2025-08-01').date()  
+            default_end = pd.to_datetime('2025-09-30').date()
+            data_min_date = default_start
+            data_max_date = default_end
+        
+        # 筛选控件
+        filter_cols = st.columns([1, 1, 1, 2])
+        with filter_cols[0]:
+            start_date = st.date_input("开始日期", value=default_start, 
+                                     min_value=data_min_date, max_value=data_max_date,
+                                     key="global_start_date")
+        with filter_cols[1]:
+            end_date = st.date_input("结束日期", value=default_end,
+                                   min_value=data_min_date, max_value=data_max_date,
+                                   key="global_end_date")
+        with filter_cols[2]:
+            month_filter = st.selectbox("月份快选", ["全部", "8月", "9月", "8月,9月"], 
+                                       key="global_month_filter")
+        
+        # 应用筛选逻辑
+        filtered_detail_df = base_df.copy()
+        
+        if month_filter != "全部":
+            month_col = '涉及月份' if '涉及月份' in filtered_detail_df.columns else '月份'
+            if month_filter == "8月,9月":
+                filtered_detail_df = filtered_detail_df[filtered_detail_df[month_col].str.contains('8月,9月', na=False)]
+            else:
+                filtered_detail_df = filtered_detail_df[
+                    (filtered_detail_df[month_col] == month_filter) | 
+                    (filtered_detail_df[month_col].str.contains(month_filter, na=False))
+                ]
+        else:
+            # 按日期区间筛选
+            filtered_detail_df['客户交期_date'] = pd.to_datetime(filtered_detail_df['客户交期'], errors='coerce').dt.date
+            # 处理空日期：保留日期为空的记录，让用户决定是否需要
+            date_filter = (
+                (filtered_detail_df['客户交期_date'] >= start_date) & 
+                (filtered_detail_df['客户交期_date'] <= end_date)
+            ) | filtered_detail_df['客户交期_date'].isna()
+            filtered_detail_df = filtered_detail_df[date_filter]
+            filtered_detail_df = filtered_detail_df.drop('客户交期_date', axis=1)
+        
+        st.markdown("---")
+        
+        # 显示KPI面板 - 使用筛选后的数据
+        st.markdown("### 📊 核心指标概览")
+        create_kpi_cards(data_dict, filtered_detail_df)
+        
+        # 将筛选后的数据存储到session state供其他组件使用
+        st.session_state['filtered_detail_df'] = filtered_detail_df
+    else:
+        # 无数据时仍显示原始KPI
+        st.markdown("### 📊 核心指标概览")
+        create_kpi_cards(data_dict)
+        filtered_detail_df = None
     
     st.markdown("---")
     
@@ -1029,7 +1135,8 @@ def main():
         st.markdown("### 🏢 管理总览")
         
         if '1_订单缺料明细' in data_dict:
-            detail_df = data_dict['1_订单缺料明细']
+            # 使用全局筛选后的数据
+            detail_df = st.session_state.get('filtered_detail_df', data_dict['1_订单缺料明细'])
             
             # 第一行：资金分布和月度对比
             col1, col2 = st.columns([1, 1])
@@ -1100,6 +1207,20 @@ def main():
             if '1_订单缺料明细' in data_dict:
                 # 智能获取数据日期范围
                 base_df = data_dict['1_订单缺料明细']
+
+                # 数据健壮性检查：验证订单金额的一致性
+                if '订单金额(RMB)' in base_df.columns:
+                    inconsistent_orders = base_df.dropna(subset=['订单金额(RMB)'])                                                 .groupby('生产订单号')['订单金额(RMB)']                                                 .nunique()
+                    inconsistent_orders = inconsistent_orders[inconsistent_orders > 1]
+                    if not inconsistent_orders.empty:
+                        st.warning(
+                            f"⚠️ **数据质量警告:** "
+                            f"发现 {len(inconsistent_orders)} 个订单在'订单金额(RMB)'上存在不一致的值。"
+                            f"问题订单号: {', '.join(inconsistent_orders.index.tolist())}。"
+                            " 为保证计算，将使用最大值。",
+                            icon="📊"
+                        )
+
                 try:
                     date_series = pd.to_datetime(base_df['客户交期'], errors='coerce')
                     data_min_date = date_series.min().date() if date_series.notna().any() else pd.to_datetime('2025-08-01').date()
@@ -1113,45 +1234,8 @@ def main():
                     default_start = pd.to_datetime('2025-08-01').date()  
                     default_end = pd.to_datetime('2025-09-30').date()
                 
-                # 时间区间筛选控件
-                col1, col2, col3 = st.columns([1, 1, 1])
-                with col1:
-                    start_date = st.date_input("开始日期", value=default_start, 
-                                             min_value=data_min_date if 'data_min_date' in locals() else None,
-                                             max_value=data_max_date if 'data_max_date' in locals() else None,
-                                             key="start_date_filter")
-                with col2:
-                    end_date = st.date_input("结束日期", value=default_end,
-                                           min_value=data_min_date if 'data_min_date' in locals() else None,
-                                           max_value=data_max_date if 'data_max_date' in locals() else None,
-                                           key="end_date_filter")
-                with col3:
-                    month_filter = st.selectbox("月份快选", ["全部", "8月", "9月", "8月,9月"], key="order_month")
-                
-                # 基础数据展示
-                detail_df = data_dict['1_订单缺料明细'].copy()
-                
-                # 时间筛选逻辑
-                if month_filter != "全部":
-                    # 兼容新旧月份字段
-                    month_col = '涉及月份' if '涉及月份' in detail_df.columns else '月份'
-                    if month_filter == "8月,9月":
-                        # 查找包含8月,9月的记录
-                        detail_df = detail_df[detail_df[month_col].str.contains('8月,9月', na=False)]
-                    else:
-                        # 精确匹配或包含匹配
-                        detail_df = detail_df[
-                            (detail_df[month_col] == month_filter) | 
-                            (detail_df[month_col].str.contains(month_filter, na=False))
-                        ]
-                else:
-                    # 按日期区间筛选
-                    detail_df['客户交期_date'] = pd.to_datetime(detail_df['客户交期'], errors='coerce').dt.date
-                    detail_df = detail_df[
-                        (detail_df['客户交期_date'] >= start_date) & 
-                        (detail_df['客户交期_date'] <= end_date)
-                    ]
-                    detail_df = detail_df.drop('客户交期_date', axis=1)
+                # 使用全局筛选后的数据
+                detail_df = st.session_state.get('filtered_detail_df', data_dict['1_订单缺料明细']).copy()
                 
                 # 按订单汇总
                 summary_df = detail_df.groupby('生产订单号').agg({
@@ -1161,7 +1245,7 @@ def main():
                     '欠料金额(RMB)': 'sum',
                     '客户交期': 'first',
                     '目的地': 'first',
-                    '订单金额(RMB)': 'first',  # 新增：预期回款
+                    '订单金额(RMB)': 'max',  # 使用max确保获取有效值
                     '每元投入回款': 'first',   # 新增：投入产出比
                     '数据完整性标记': 'first'  # 新增：数据状态
                 }).reset_index()
@@ -1178,10 +1262,22 @@ def main():
                     '欠料金额(RMB)': 'first',  # 欠料金额已按订单汇总
                     '数据完整性标记': 'first'
                 }).reset_index()
+
+
                 
                 # 基于去重后的数据计算统计
                 no_shortage_orders = unique_orders[unique_orders['欠料金额(RMB)'] == 0]
-                no_shortage_return = no_shortage_orders['订单金额(RMB)'].sum() if len(no_shortage_orders) > 0 else 0
+                # 修复：按客户订单号取最大值，而不是简单汇总
+                if len(no_shortage_orders) > 0:
+                    # 先合并客户订单号信息
+                    no_shortage_with_customer = no_shortage_orders.merge(
+                        summary_df[['生产订单号', '客户订单号']].drop_duplicates(), 
+                        on='生产订单号', how='left'
+                    )
+                    # 按客户订单号分组，取最大订单金额
+                    no_shortage_return = no_shortage_with_customer.groupby('客户订单号')['订单金额(RMB)'].max().sum()
+                else:
+                    no_shortage_return = 0
                 no_shortage_count = len(no_shortage_orders)
                 
                 # 显示汇总统计信息 - 管理层关键指标
@@ -1196,10 +1292,14 @@ def main():
                     st.metric("💰 缺料投入", format_currency(total_shortage),
                              help="需要采购的物料金额")
                 with metric_cols[2]:
-                    # 修复：使用去重后的订单金额，避免重复计算
-                    total_return_all = unique_orders['订单金额(RMB)'].sum()
+                    # 修复：使用与KPI卡片完全相同的逻辑
+                    unique_purchase_orders_mgmt = summary_df.groupby('客户订单号').agg({
+                        '订单金额(RMB)': 'first'  # 与KPI卡片保持一致，使用first
+                    }).reset_index()
+                    total_return_all = unique_purchase_orders_mgmt['订单金额(RMB)'].sum()
+                    
                     st.metric("💵 预期总回款", format_currency(total_return_all),
-                             help="所有订单的预期回款金额（按生产订单号去重）")
+                             help="所有订单的预期回款金额（按客户订单号去重，取first值）")
                 with metric_cols[3]:
                     st.metric("✅ 不缺料订单", f"{no_shortage_count}个",
                              help="无需采购即可生产的订单")
@@ -1791,53 +1891,15 @@ def main():
         
         with supplier_tab:
             if '1_订单缺料明细' in data_dict:
-                # 智能获取供应商数据日期范围（复用订单维度的数据范围）
-                supplier_base_df = data_dict['1_订单缺料明细']
-                try:
-                    supplier_date_series = pd.to_datetime(supplier_base_df['客户交期'], errors='coerce')
-                    supplier_min_date = supplier_date_series.min().date() if supplier_date_series.notna().any() else pd.to_datetime('2025-08-01').date()
-                    supplier_max_date = supplier_date_series.max().date() if supplier_date_series.notna().any() else pd.to_datetime('2025-09-30').date()
-                    supplier_default_start = supplier_min_date
-                    supplier_default_end = supplier_max_date
-                except:
-                    supplier_default_start = pd.to_datetime('2025-08-01').date()  
-                    supplier_default_end = pd.to_datetime('2025-09-30').date()
+                # 使用全局筛选后的数据
+                supplier_detail_df = st.session_state.get('filtered_detail_df', data_dict['1_订单缺料明细']).copy()
                 
-                # 供应商维度筛选控件
-                col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-                with col1:
-                    supplier_start_date = st.date_input("开始日期", value=supplier_default_start, key="supplier_start")
+                # 供应商排序选择
+                col1, col2 = st.columns([3, 1])
                 with col2:
-                    supplier_end_date = st.date_input("结束日期", value=supplier_default_end, key="supplier_end")
-                with col3:
-                    supplier_month_filter = st.selectbox("月份快选", ["全部", "8月", "9月", "8月,9月"], key="supplier_month")
-                with col4:
                     supplier_sort_by = st.selectbox("排序方式", ["采购金额", "数量Pcs", "供应商名称"], key="supplier_sort")
                 
-                # 获取供应商维度数据
-                supplier_detail_df = data_dict['1_订单缺料明细'].copy()
-                
-                # 时间筛选逻辑
-                if supplier_month_filter != "全部":
-                    # 兼容新旧月份字段
-                    month_col = '涉及月份' if '涉及月份' in supplier_detail_df.columns else '月份'
-                    if supplier_month_filter == "8月,9月":
-                        # 查找包含8月,9月的记录
-                        supplier_detail_df = supplier_detail_df[supplier_detail_df[month_col].str.contains('8月,9月', na=False)]
-                    else:
-                        # 精确匹配或包含匹配
-                        supplier_detail_df = supplier_detail_df[
-                            (supplier_detail_df[month_col] == supplier_month_filter) | 
-                            (supplier_detail_df[month_col].str.contains(supplier_month_filter, na=False))
-                        ]
-                else:
-                    # 按日期区间筛选
-                    supplier_detail_df['客户交期_date'] = pd.to_datetime(supplier_detail_df['客户交期'], errors='coerce').dt.date
-                    supplier_detail_df = supplier_detail_df[
-                        (supplier_detail_df['客户交期_date'] >= supplier_start_date) & 
-                        (supplier_detail_df['客户交期_date'] <= supplier_end_date)
-                    ]
-                    supplier_detail_df = supplier_detail_df.drop('客户交期_date', axis=1)
+                # 不再需要重复的时间筛选，因为已经使用了全局筛选的数据
                 
                 # 按供应商汇总
                 supplier_summary = supplier_detail_df.groupby('主供应商名称').agg({
@@ -1895,7 +1957,7 @@ def main():
                         st.download_button(
                             "📥 导出CSV", 
                             data=output.getvalue(),
-                            file_name=f"供应商采购清单_{supplier_start_date}_{supplier_end_date}.csv",
+                            file_name=f"供应商采购清单_筛选数据.csv",
                             mime="text/csv"
                         )
                 
