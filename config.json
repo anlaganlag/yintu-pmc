@@ -1,0 +1,93 @@
+{
+  "file_paths": {
+    "orders_domestic": {
+      "primary": "D:\\827-yintu\\yintu-pmc\\input\\order-amt-89.xlsx",
+      "alternatives": [
+        "订单-国内-89.xlsx",
+        "order_domestic_89.xlsx",
+        "data/order-amt-89.xlsx"
+      ],
+      "sheets": [
+        "8月",
+        "9月"
+      ]
+    },
+    "orders_cambodia": {
+      "primary": "D:\\827-yintu\\yintu-pmc\\input\\order-amt-89-c.xlsx",
+      "alternatives": [
+        "订单-柬埔寨-89.xlsx",
+        "order_cambodia_89.xlsx",
+        "data/order-amt-89-c.xlsx"
+      ],
+      "sheets": [
+        "8月 -柬",
+        "9月 -柬",
+        "8月-柬",
+        "9月-柬"
+      ]
+    },
+    "shortage": {
+      "primary": "D:\\yingtu-PMC\\mat_owe_pso.xlsx",
+      "alternatives": [
+        "D:/yingtu-PMC/mat_owe_pso.xlsx",
+        "D:/827-yintu/yintu-pmc/mat_owe_pso.xlsx",
+        "data/mat_owe_pso.xlsx",
+        "欠料清单.xlsx",
+        "material_shortage.xlsx"
+      ],
+      "sheets": [
+        null,
+        "Sheet1",
+        "欠料表"
+      ]
+    },
+    "inventory": {
+      "primary": "D:\\yingtu-PMC\\inventory_list.xlsx",
+      "alternatives": [
+        "D:/yingtu-PMC/inventory_list.xlsx",
+        "D:/827-yintu/yintu-pmc/inventory_list.xlsx",
+        "data/inventory_list.xlsx",
+        "库存清单.xlsx",
+        "stock_list.xlsx"
+      ],
+      "sheets": [
+        null,
+        "Sheet1",
+        "库存表"
+      ]
+    },
+    "supplier": {
+      "primary": "D:\\yingtu-PMC\\supplier.xlsx",
+      "alternatives": [
+        "D:/yingtu-PMC/supplier.xlsx",
+        "D:/827-yintu/yintu-pmc/supplier.xlsx",
+        "data/supplier.xlsx",
+        "供应商清单.xlsx",
+        "supplier_list.xlsx"
+      ],
+      "sheets": [
+        null,
+        "Sheet1",
+        "供应商表"
+      ]
+    }
+  },
+  "search_paths": [
+    ".",
+    "./data",
+    "./input",
+    "../",
+    "D:/yingtu-PMC",
+    "D:/827-yintu/yintu-pmc",
+    "C:\\Users\\tanjh/Desktop",
+    "C:\\Users\\tanjh/Downloads"
+  ],
+  "encoding_options": [
+    "utf-8",
+    "gbk",
+    "gb2312",
+    "gb18030"
+  ],
+  "retry_times": 3,
+  "enable_user_input": true
+}

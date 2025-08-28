@@ -8,7 +8,7 @@ openpyxl==3.1.5  # Excel文件读写 / Excel file I/O
 xlrd==2.0.1      # 旧版Excel文件支持 / Legacy Excel file support
 
 # Web应用框架 / Web Application Framework  
-streamlit==1.40.2
+streamlit==1.39.1
 
 # 数据可视化 / Data Visualization
 plotly==5.24.1

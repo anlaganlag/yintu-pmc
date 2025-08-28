@@ -1,0 +1,319 @@
+2025-08-28 09:43:40,699 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 09:43:40,700 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:43:40,700 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:43:40,937 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月
+2025-08-28 09:43:40,941 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:43:40,944 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:43:41,008 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月
+2025-08-28 09:43:41,011 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:43:41,013 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:43:41,015 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:43:41,016 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:43:41,071 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬
+2025-08-28 09:43:41,072 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:43:41,073 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:43:41,110 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬
+2025-08-28 09:43:41,113 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:43:41,113 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:43:41,116 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 09:43:41,117 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:43:41,117 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:43:42,473 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: None
+2025-08-28 09:43:42,473 - robust_file_loader - WARNING - 策略 _load_with_openpyxl 失败: 'dict' object has no attribute 'empty'
+2025-08-28 09:43:43,724 - robust_file_loader - INFO - 成功加载工作表: Sheet1
+2025-08-28 09:43:43,733 - robust_file_loader - WARNING - 策略 _load_with_default 失败: 'float' object has no attribute 'lower'
+2025-08-28 09:43:43,768 - robust_file_loader - ERROR - 所有加载策略都失败: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:43:43,768 - robust_file_loader - WARNING - 无法加载 shortage 文件
+2025-08-28 09:43:43,770 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:43:43,771 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:43:55,837 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: None
+2025-08-28 09:43:55,837 - robust_file_loader - WARNING - 策略 _load_with_openpyxl 失败: 'dict' object has no attribute 'empty'
+2025-08-28 09:44:42,425 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:44:42,425 - robust_file_loader - WARNING - 缺少必需列: 单价
+2025-08-28 09:44:42,556 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:44:42,559 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:44:42,560 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:44:52,506 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: None
+2025-08-28 09:44:52,506 - robust_file_loader - WARNING - 策略 _load_with_openpyxl 失败: 'dict' object has no attribute 'empty'
+2025-08-28 09:45:02,391 - robust_file_loader - INFO - 成功加载工作表: Sheet1
+2025-08-28 09:45:02,442 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:45:02,498 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 09:45:02,557 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:47:14,364 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 09:47:14,364 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:47:14,365 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:47:14,613 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月
+2025-08-28 09:47:14,614 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:47:14,616 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:47:14,717 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月
+2025-08-28 09:47:14,719 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:47:14,720 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:47:14,721 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:47:14,722 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:47:14,825 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬
+2025-08-28 09:47:14,827 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:47:14,828 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:47:14,905 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬
+2025-08-28 09:47:14,906 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:47:14,908 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:47:14,911 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 09:47:14,912 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:47:14,913 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:47:16,443 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: None
+2025-08-28 09:47:16,443 - robust_file_loader - WARNING - 策略 _load_with_openpyxl 失败: 'dict' object has no attribute 'empty'
+2025-08-28 09:47:18,156 - robust_file_loader - INFO - 成功加载工作表: Sheet1
+2025-08-28 09:47:18,166 - robust_file_loader - WARNING - 策略 _load_with_default 失败: 'float' object has no attribute 'lower'
+2025-08-28 09:47:18,195 - robust_file_loader - ERROR - 所有加载策略都失败: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:47:18,195 - robust_file_loader - WARNING - 无法加载 shortage 文件
+2025-08-28 09:47:18,195 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:47:18,200 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:47:29,319 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: None
+2025-08-28 09:47:29,319 - robust_file_loader - WARNING - 策略 _load_with_openpyxl 失败: 'dict' object has no attribute 'empty'
+2025-08-28 09:47:53,542 - robust_file_loader - WARNING - 缺少必需列: 单价
+2025-08-28 09:47:53,542 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:47:53,623 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:47:53,623 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:47:53,625 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:47:59,457 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: None
+2025-08-28 09:47:59,457 - robust_file_loader - WARNING - 策略 _load_with_openpyxl 失败: 'dict' object has no attribute 'empty'
+2025-08-28 09:48:05,542 - robust_file_loader - INFO - 成功加载工作表: Sheet1
+2025-08-28 09:48:05,579 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:48:05,620 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 09:48:05,665 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:51:29,072 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 09:51:29,073 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:51:29,073 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:51:29,209 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月, header=None
+2025-08-28 09:51:29,212 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:51:29,212 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:51:29,274 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月, header=None
+2025-08-28 09:51:29,276 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:51:29,277 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:51:29,277 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:51:29,278 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:51:29,325 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬, header=None
+2025-08-28 09:51:29,326 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:51:29,328 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:51:29,362 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬, header=None
+2025-08-28 09:51:29,363 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:51:29,364 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:51:29,366 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 09:51:29,366 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:51:29,367 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:51:36,350 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 09:51:36,354 - robust_file_loader - WARNING - 缺少必需列: 生产单号
+2025-08-28 09:51:36,354 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:51:36,354 - robust_file_loader - WARNING - 缺少必需列: 欠料数量
+2025-08-28 09:51:36,358 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 09:51:36,364 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:51:36,365 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:51:36,365 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:52:52,231 - robust_file_loader - WARNING - 缺少必需列: 单价
+2025-08-28 09:52:52,231 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:52:52,302 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:52:52,302 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:52:52,302 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:53:02,827 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 09:53:02,864 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:53:02,897 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 09:53:02,933 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:53:17,484 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 09:53:17,489 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:53:17,490 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:53:17,645 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月, header=None
+2025-08-28 09:53:17,645 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:53:17,645 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:53:17,720 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月, header=None
+2025-08-28 09:53:17,723 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:53:17,723 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:53:17,723 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:53:17,727 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:53:17,785 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬, header=None
+2025-08-28 09:53:17,785 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:53:17,785 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:53:17,830 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬, header=None
+2025-08-28 09:53:17,832 - robust_file_loader - WARNING - 缺少必需列: 产品型号
+2025-08-28 09:53:17,832 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:53:17,832 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 09:53:17,837 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:53:17,838 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:53:25,189 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 09:53:25,196 - robust_file_loader - WARNING - 缺少必需列: 生产单号
+2025-08-28 09:53:25,196 - robust_file_loader - WARNING - 缺少必需列: 欠料数量
+2025-08-28 09:53:25,196 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:53:25,202 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 09:53:25,208 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:53:25,208 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:53:25,208 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:54:41,139 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:54:41,139 - robust_file_loader - WARNING - 缺少必需列: 单价
+2025-08-28 09:54:41,220 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:54:41,220 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:54:41,220 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:54:52,221 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 09:54:52,259 - robust_file_loader - WARNING - 缺少必需列: 物料编码
+2025-08-28 09:54:52,299 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 09:54:52,340 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:56:53,206 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 09:56:53,206 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:56:53,206 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:56:53,376 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月, header=None
+2025-08-28 09:56:53,378 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:56:53,451 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月, header=None
+2025-08-28 09:56:53,456 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:56:53,456 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:56:53,456 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:56:53,518 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬, header=None
+2025-08-28 09:56:53,522 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:56:53,559 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬, header=None
+2025-08-28 09:56:53,565 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:56:53,565 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 09:56:53,568 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:56:53,568 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:57:02,586 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 09:57:02,597 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 09:57:02,604 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:57:02,604 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:57:02,605 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:58:36,592 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:58:36,592 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:58:36,593 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:58:50,812 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 09:58:50,891 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 09:58:50,939 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 09:59:19,748 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 09:59:19,748 - file_config - ERROR - 必需文件 orders_domestic 未找到: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 09:59:19,748 - file_config - ERROR - 获取用户输入失败: EOF when reading a line
+2025-08-28 09:59:19,748 - file_config - ERROR - 必需文件 orders_cambodia 未找到: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 09:59:19,748 - file_config - ERROR - 获取用户输入失败: EOF when reading a line
+2025-08-28 09:59:19,748 - robust_file_loader - ERROR - 未能加载任何订单数据
+2025-08-28 09:59:19,753 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:59:19,753 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 09:59:28,487 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 09:59:28,498 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 09:59:28,505 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 09:59:28,505 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 09:59:28,505 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:01:00,946 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:01:00,946 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:01:00,946 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:01:13,600 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 10:01:13,667 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 10:01:13,713 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:02:35,296 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 10:02:35,302 - file_config - ERROR - 必需文件 orders_domestic 未找到: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 10:02:35,302 - file_config - ERROR - 获取用户输入失败: EOF when reading a line
+2025-08-28 10:02:35,302 - file_config - ERROR - 必需文件 orders_cambodia 未找到: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 10:02:35,302 - file_config - ERROR - 获取用户输入失败: EOF when reading a line
+2025-08-28 10:02:35,302 - robust_file_loader - ERROR - 未能加载任何订单数据
+2025-08-28 10:02:35,302 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:02:35,302 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:02:42,423 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 10:02:42,430 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 10:02:42,436 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:02:42,436 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:02:42,436 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:03:55,271 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:03:55,271 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:03:55,271 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:04:05,700 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 10:04:05,762 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 10:04:05,800 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:04:19,577 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 10:04:19,582 - file_config - ERROR - 必需文件 orders_domestic 未找到: D:\827-yintu\yintu-pmc\order-amt-89.xlsx
+2025-08-28 10:04:19,582 - file_config - ERROR - 获取用户输入失败: EOF when reading a line
+2025-08-28 10:04:19,583 - file_config - ERROR - 必需文件 orders_cambodia 未找到: D:\827-yintu\yintu-pmc\order-amt-89-c.xlsx
+2025-08-28 10:04:19,583 - file_config - ERROR - 获取用户输入失败: EOF when reading a line
+2025-08-28 10:04:19,583 - robust_file_loader - ERROR - 未能加载任何订单数据
+2025-08-28 10:04:19,583 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:04:19,585 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:04:26,412 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 10:04:26,420 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 10:04:26,426 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:04:26,426 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:04:26,427 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:05:38,746 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:05:38,746 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:05:38,748 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:05:49,557 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 10:05:49,614 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 10:05:49,649 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:06:51,584 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 10:06:51,584 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:06:51,584 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:06:51,742 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月, header=None
+2025-08-28 10:06:51,744 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:06:51,812 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月, header=None
+2025-08-28 10:06:51,816 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:06:51,817 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:06:51,818 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:06:51,868 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬, header=None
+2025-08-28 10:06:51,869 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:06:51,902 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬, header=None
+2025-08-28 10:06:51,902 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:06:51,902 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 10:06:51,902 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:06:51,902 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:06:58,848 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 10:06:58,855 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 10:06:58,859 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:06:58,859 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:06:58,859 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:08:19,143 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:08:19,143 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:08:19,143 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:08:30,973 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 10:08:31,046 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 10:08:31,091 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:09:46,915 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 10:09:46,915 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:09:46,915 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:09:47,164 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月, header=None
+2025-08-28 10:09:47,173 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:09:47,356 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月, header=None
+2025-08-28 10:09:47,362 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:09:47,362 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:09:47,363 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:09:47,479 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬, header=None
+2025-08-28 10:09:47,483 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:09:47,560 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬, header=None
+2025-08-28 10:09:47,563 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:09:47,566 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 10:09:47,566 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:09:47,568 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:09:56,171 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 10:09:56,172 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 10:09:56,183 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:09:56,183 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:09:56,184 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:11:26,141 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:11:26,142 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:11:26,143 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:11:46,262 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 10:12:08,650 - file_config - INFO - 成功加载配置文件: config.json
+2025-08-28 10:12:08,651 - file_config - INFO - 找到文件 orders_domestic: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:12:08,651 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:12:08,804 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月, header=None
+2025-08-28 10:12:08,807 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:12:08,879 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月, header=None
+2025-08-28 10:12:08,883 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89.xlsx
+2025-08-28 10:12:08,884 - file_config - INFO - 找到文件 orders_cambodia: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:12:08,885 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:12:08,944 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 8月 -柬, header=None
+2025-08-28 10:12:08,946 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:12:08,982 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: 9月 -柬, header=None
+2025-08-28 10:12:08,984 - robust_file_loader - INFO - 成功加载文件: D:\827-yintu\yintu-pmc\input\order-amt-89-c.xlsx
+2025-08-28 10:12:08,986 - robust_file_loader - INFO - 成功加载 454 条订单数据
+2025-08-28 10:12:08,986 - file_config - INFO - 找到文件 shortage: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:12:08,987 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:12:15,997 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=1
+2025-08-28 10:12:16,009 - robust_file_loader - WARNING - 发现 607 个重复行，已删除
+2025-08-28 10:12:16,015 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\mat_owe_pso.xlsx
+2025-08-28 10:12:16,016 - file_config - INFO - 找到文件 inventory: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:12:16,016 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:14:44,497 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\inventory_list.xlsx
+2025-08-28 10:14:44,498 - file_config - INFO - 找到文件 supplier: D:\yingtu-PMC\supplier.xlsx
+2025-08-28 10:14:44,499 - file_config - INFO - 配置已保存到: config.json
+2025-08-28 10:15:04,382 - robust_file_loader - INFO - 使用openpyxl成功加载工作表: Sheet1, header=None
+2025-08-28 10:15:04,480 - robust_file_loader - WARNING - 发现 142 个重复行，已删除
+2025-08-28 10:15:04,541 - robust_file_loader - INFO - 成功加载文件: D:\yingtu-PMC\supplier.xlsx

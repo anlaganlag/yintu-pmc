@@ -40,8 +40,8 @@ class ComprehensivePMCAnalyzer:
             orders_data = []
             
             # 国内订单
-            orders_aug_domestic = pd.read_excel('order-amt-89.xlsx', sheet_name='8月')
-            orders_sep_domestic = pd.read_excel('order-amt-89.xlsx', sheet_name='9月')
+            orders_aug_domestic = pd.read_excel('input/order-amt-89.xlsx', sheet_name='8月')
+            orders_sep_domestic = pd.read_excel('input/order-amt-89.xlsx', sheet_name='9月')
             orders_aug_domestic['月份'] = '8月'
             orders_aug_domestic['数据来源工作表'] = '国内'
             orders_sep_domestic['月份'] = '9月'
@@ -49,8 +49,8 @@ class ComprehensivePMCAnalyzer:
             orders_data.extend([orders_aug_domestic, orders_sep_domestic])
             
             # 柬埔寨订单
-            orders_aug_cambodia = pd.read_excel('order-amt-89-c.xlsx', sheet_name='8月 -柬')
-            orders_sep_cambodia = pd.read_excel('order-amt-89-c.xlsx', sheet_name='9月 -柬')
+            orders_aug_cambodia = pd.read_excel('input/order-amt-89-c.xlsx', sheet_name='8月 -柬')
+            orders_sep_cambodia = pd.read_excel('input/order-amt-89-c.xlsx', sheet_name='9月 -柬')
             orders_aug_cambodia['月份'] = '8月'
             orders_aug_cambodia['数据来源工作表'] = '柬埔寨'
             orders_sep_cambodia['月份'] = '9月'
@@ -102,7 +102,7 @@ class ComprehensivePMCAnalyzer:
         # 2. 加载欠料表
         print("2. 加载mat_owe_pso.xlsx欠料表...")
         try:
-            self.shortage_df = pd.read_excel('D:/yingtu-PMC/mat_owe_pso.xlsx', 
+            self.shortage_df = pd.read_excel('input/mat_owe_pso.xlsx', 
                                            sheet_name='Sheet1', skiprows=1)
             
             # 标准化欠料表列名
@@ -128,7 +128,7 @@ class ComprehensivePMCAnalyzer:
         # 3. 加载库存价格表
         print("3. 加载inventory_list.xlsx库存表...")
         try:
-            self.inventory_df = pd.read_excel('D:/yingtu-PMC/inventory_list.xlsx')
+            self.inventory_df = pd.read_excel('input/inventory_list.xlsx')
             
             # 价格处理：优先最新報價，回退到成本單價
             self.inventory_df['最终价格'] = self.inventory_df['最新報價'].fillna(self.inventory_df['成本單價'])
@@ -153,7 +153,7 @@ class ComprehensivePMCAnalyzer:
         # 4. 加载供应商表
         print("4. 加载supplier.xlsx供应商表...")
         try:
-            self.supplier_df = pd.read_excel('D:/yingtu-PMC/supplier.xlsx')
+            self.supplier_df = pd.read_excel('input/supplier.xlsx')
             
             # 处理供应商价格和货币转换
             self.supplier_df['单价_数值'] = pd.to_numeric(self.supplier_df['单价'], errors='coerce').fillna(0)

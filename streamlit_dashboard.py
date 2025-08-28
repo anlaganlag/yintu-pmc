@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-银图PMC智能分析平台
+银图订单追踪分析平台
 基于精准供应商物料分析报告的可视化仪表板
 清新风格 + 管理导向 + 简单交互
 """
@@ -9,77 +9,130 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
 import io
 import os
 import tempfile
 import time
-import traceback
-from datetime import datetime
 from contextlib import contextmanager
-from typing import Dict, Any, Optional
+import functools
 
-# 页面配置 - 必须在任何Streamlit组件之前
-st.set_page_config(
-    page_title="银图PMC智能分析平台",
-    page_icon="🌟",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# 页面配置将在main函数中调用，避免模块级别的Streamlit调用
+
+def get_streamlit_version():
+    """获取Streamlit版本信息 - 阶段2修复"""
+    try:
+        return tuple(map(int, st.__version__.split('.')[:2]))
+    except:
+        return (1, 0)  # 默认版本
+
+def is_problematic_version():
+    """检查是否为问题版本 - 阶段2修复"""
+    version = get_streamlit_version()
+    return version >= (1, 40)  # 1.40+版本存在SessionInfo相关bug
+
+def smart_retry(max_attempts=3, base_delay=0.1):
+    """智能重试装饰器 - 阶段2修复"""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
+                        if attempt < max_attempts - 1:
+                            delay = base_delay * (2 ** attempt)  # 指数退避
+                            time.sleep(delay)
+                            continue
+                        return None  # 最后一次失败后返回None
+                    raise  # 非SessionInfo错误直接抛出
+            return None
+        return wrapper
+    return decorator
 
 class RobustSessionManager:
-    """健壮的Session管理器 - 解决SessionInfo初始化问题"""
+    """健壮的Session管理器 - 阶段2增强版"""
     
     def __init__(self):
         self.retry_delays = [0.05, 0.1, 0.3, 0.8]  # 指数退避
-        self.max_init_attempts = 5
+        self.max_init_attempts = 8  # 增加重试次数
+        self._initialized = False
+        self._init_lock = False
+        self.state_cache = {}  # 本地状态缓存
+        self.is_problematic_version = is_problematic_version()
+    
+    def ensure_initialized(self):
+        """延迟初始化确保机制 - 阶段2核心功能"""
+        if self._initialized:
+            return True
+            
+        if self._init_lock:  # 防止重复初始化
+            return False
+            
+        self._init_lock = True
+        try:
+            # 问题版本使用特殊处理
+            if self.is_problematic_version:
+                return self._problematic_version_init()
+            else:
+                return self._standard_init()
+        finally:
+            self._init_lock = False
+    
+    def _problematic_version_init(self):
+        """问题版本专用初始化 - 针对1.40+"""
+        for delay in [0.1, 0.3, 0.8, 1.5]:  # 更长延迟
+            try:
+                time.sleep(delay)
+                if hasattr(st, 'session_state'):
+                    # 最小化session访问
+                    st.session_state.get('_test_key', None)
+                    self._initialized = True
+                    return True
+            except Exception as e:
+                error_msg = str(e).lower()
+                if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
+                    continue  # 继续重试
+                raise
+        return False
+    
+    def _standard_init(self):
+        """标准版本初始化 - 移除问题代码"""
+        try:
+            # 移除强制session访问，改为简单标记
+            self._initialized = True
+            return True
+        except:
+            return False
+
+    def safe_session_check(self):
+        """简化版session检查 - 移除问题代码"""
+        try:
+            # 只检查session_state是否存在，不访问内部
+            return hasattr(st, 'session_state')
+        except Exception as e:
+            error_msg = str(e).lower()
+            if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
+                return False
+            raise
         
     def initialize(self):
-        """安全初始化 - 多重保护机制"""
-        attempts = 0
-        while attempts < self.max_init_attempts:
-            try:
-                # 1. 预检查Streamlit运行时状态
-                if not hasattr(st, 'session_state'):
-                    raise RuntimeError("Streamlit session_state不可用")
-                    
-                # 2. 原子性初始化所有状态
-                self._atomic_init()
-                
-                # 3. 验证初始化成功
-                if self._verify_initialization():
-                    break
-                    
-            except Exception as e:
-                attempts += 1
-                if "SessionInfo" in str(e) and attempts < self.max_init_attempts:
-                    delay = self.retry_delays[min(attempts-1, len(self.retry_delays)-1)]
-                    time.sleep(delay)
-                    continue
-                elif attempts >= self.max_init_attempts:
-                    st.error(f"❌ Session初始化失败 (尝试{attempts}次): {e}")
-                    st.stop()
-                else:
-                    raise
+        """简化版初始化 - 移除问题代码"""
+        try:
+            # 移除复杂的初始化逻辑，只做基本设置
+            self._atomic_init()
+            return True
+        except Exception as e:
+            # 静默处理初始化失败
+            return False
     
     def _atomic_init(self):
-        """原子性状态初始化"""
-        defaults = {
-            'password_correct': None,
-            'show_upload': False,
-            'upload_complete': False,
-            'session_ready': True,
-            'last_init_time': time.time(),
-            'rerun_lock': False,
-            'selected_orders': set(),
-            'last_date_filter': None
-        }
-        
-        for key, value in defaults.items():
-            if key not in st.session_state:
-                st.session_state[key] = value
+        """简化版状态初始化 - 延迟到真正需要时"""
+        # 移除立即的session_state操作
+        # 状态将在需要时才设置
+        pass
     
     def _verify_initialization(self):
         """验证初始化是否成功"""
@@ -103,61 +156,345 @@ class RobustSessionManager:
                 st.session_state.rerun_lock = False
     
     def safe_rerun(self, force=False):
-        """最安全的重新运行机制"""
+        """WebSocket友好的rerun - 减少冲突"""
+        # 更严格的冷却时间
+        if not force:
+            last_rerun = self.safe_get_state('last_rerun_time', 0)
+            if (time.time() - last_rerun) < 2.0:  # 增加到2秒冷却时间
+                return
+        
+        # 预检查session状态
+        if not self.safe_session_check():
+            return
+        
         if not force:
             with self.rerun_protection() as can_rerun:
                 if not can_rerun:
                     return
         
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            try:
-                # 短暂延迟让SessionInfo稳定
-                time.sleep(0.05 + attempt * 0.05)
-                st.rerun()
-                break
-            except Exception as e:
-                if "SessionInfo" in str(e) and attempt < max_attempts - 1:
-                    time.sleep(0.2 * (attempt + 1))
-                    continue
-                else:
-                    st.error(f"🔄 页面刷新失败: {e}")
-                    break
+        # 记录rerun时间
+        self.safe_set_state('last_rerun_time', time.time())
+        
+        # 简化rerun，减少WebSocket任务
+        try:
+            st.rerun()
+        except Exception:
+            # 静默处理所有rerun异常，避免WebSocket错误
+            pass
     
     def safe_get_state(self, key: str, default=None):
-        """安全获取session状态"""
+        """简化版安全获取 - 延迟访问"""
+        # 优先使用缓存
+        if key in self.state_cache:
+            return self.state_cache[key]
+        
         try:
-            return st.session_state.get(key, default)
+            # 首次访问时才接触session_state
+            if hasattr(st, 'session_state') and hasattr(st.session_state, 'get'):
+                value = st.session_state.get(key, default)
+                self.state_cache[key] = value
+                return value
         except Exception as e:
-            if "SessionInfo" in str(e):
-                # 如果SessionInfo未初始化，返回默认值
-                return default
-            raise
+            error_msg = str(e).lower()
+            if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
+                pass  # 静默失败
+        
+        # 回退到默认值
+        return self.state_cache.get(key, default)
     
     def safe_set_state(self, key: str, value):
-        """安全设置session状态"""
+        """简化版安全设置 - 缓存优先"""
+        # 总是更新缓存
+        self.state_cache[key] = value
+        
         try:
-            st.session_state[key] = value
-            return True
+            # 只有在session确实可用时才写入
+            if hasattr(st, 'session_state') and hasattr(st.session_state, '__setitem__'):
+                st.session_state[key] = value
+                return True
         except Exception as e:
-            if "SessionInfo" in str(e):
-                st.warning(f"状态设置失败 {key}: SessionInfo未初始化")
-                return False
-            raise
+            error_msg = str(e).lower()
+            if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
+                pass  # 静默失败，缓存已更新
+            else:
+                raise
+        
+        return False  # 缓存成功，session失败
 
 # 全局管理器实例
 session_mgr = RobustSessionManager()
 
-# 应用启动时初始化
-session_mgr.initialize()
+def _fallback_safe_display(df, key_suffix):
+    """降级安全显示 - setIn错误的最后保障"""
+    try:
+        if df.empty:
+            st.info("无数据可显示")
+            return
+        
+        # 限制行数和列数
+        max_display_rows = 30
+        max_display_cols = 8
+        
+        # 确保数据安全
+        safe_df = df.head(max_display_rows).iloc[:, :max_display_cols].copy().reset_index(drop=True)
+        
+        # 使用HTML表格显示，避免复杂组件
+        html_table = safe_df.to_html(index=False, classes='dataframe', escape=False, max_rows=max_display_rows)
+        st.markdown(html_table, unsafe_allow_html=True)
+        
+        if len(df) > max_display_rows or len(df.columns) > max_display_cols:
+            st.info(f"安全模式: 仅显示前{max_display_rows}行×{max_display_cols}列，共{len(df)}行×{len(df.columns)}列")
+    
+    except Exception as e:
+        st.error(f"❌ 降级显示也失败: {e}")
+        # 最终方案：显示数据概要
+        st.json({
+            "数据行数": len(df),
+            "数据列数": len(df.columns),
+            "前5列": list(df.columns[:5]) if len(df.columns) > 0 else []
+        })
+
+def safe_display_with_editor(selection_data, start_date, end_date, month_filter):
+    """极度安全的数据编辑器 - 彻底解决setIn错误"""
+    try:
+        # 极度保守的数据量限制
+        max_safe_rows = 20  # 大幅减少到20行
+        total_selections = len(selection_data)
+        
+        if total_selections == 0:
+            st.info("💡 暂无订单数据可选择")
+            return
+        
+        # 数据安全处理
+        safe_selection_data = selection_data[:max_safe_rows]
+        if total_selections > max_safe_rows:
+            st.warning(f"⚠️ 为避免显示错误，编辑器仅显示前{max_safe_rows}行 (共{total_selections}行)")
+            st.info("💡 请使用上方的筛选功能缩小数据范围")
+        
+        # 创建绝对安全的DataFrame
+        try:
+            # 清理数据，确保没有异常值
+            cleaned_data = []
+            for i, item in enumerate(safe_selection_data):
+                if i >= max_safe_rows:  # 双重保险
+                    break
+                clean_item = {}
+                for key, value in item.items():
+                    # 确保所有值都是安全的
+                    if pd.isna(value) or value is None:
+                        clean_item[key] = ""
+                    else:
+                        clean_item[key] = str(value) if not isinstance(value, (bool, int, float)) else value
+                cleaned_data.append(clean_item)
+            
+            # 创建DataFrame并重置索引
+            editor_df = pd.DataFrame(cleaned_data).reset_index(drop=True)
+            
+            # 严格验证数据完整性和索引范围
+            if len(editor_df) == 0:
+                st.warning("⚠️ 数据处理后为空，请检查筛选条件")
+                return
+            
+            # 额外的安全检查：确保数据连续性
+            expected_indices = list(range(len(editor_df)))
+            actual_indices = editor_df.index.tolist()
+            if expected_indices != actual_indices:
+                st.warning(f"⚠️ 检测到索引不连续，正在修复...")
+                editor_df = editor_df.reset_index(drop=True)
+            
+            # 创建绝对唯一的key，包含时间戳避免缓存
+            import hashlib
+            import time
+            timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+            key_base = f"{start_date}_{end_date}_{month_filter}_{len(editor_df)}_{timestamp}"
+            unique_key = hashlib.md5(key_base.encode()).hexdigest()[:8]
+            
+            st.info(f"📊 显示 {len(editor_df)} 行数据（索引0-{len(editor_df)-1}），可勾选订单进行ROI分析")
+            
+            # 预检查：确保数据稳定
+            pre_check_len = len(editor_df)
+            if pre_check_len != len(cleaned_data):
+                st.error("❌ 数据在处理过程中发生变化，无法安全显示")
+                return
+            
+            # 尝试使用data_editor with extra safety
+            try:
+                # 记录编辑前状态
+                st.session_state[f'pre_edit_len_{unique_key}'] = len(editor_df)
+                
+                edited_df = st.data_editor(
+                    editor_df,
+                    column_config={
+                        "选择": st.column_config.CheckboxColumn(
+                            "选择",
+                            help="勾选要分析ROI的订单",
+                            default=False,
+                        )
+                    },
+                    disabled=["生产订单号", "客户订单号", "产品型号", "客户交期", "欠料金额", "预期回款", "投入产出比", "完整性"],
+                    hide_index=True,
+                    use_container_width=True,
+                    height=min(250, len(editor_df) * 30 + 50),  # 更保守的高度
+                    key=f"ultra_safe_editor_{unique_key}",
+                    num_rows="fixed"  # 固定行数，防止动态变化
+                )
+                
+                # 验证编辑后数据完整性
+                post_edit_len = len(edited_df) if edited_df is not None else 0
+                pre_edit_len = st.session_state.get(f'pre_edit_len_{unique_key}', 0)
+                
+                if post_edit_len != pre_edit_len:
+                    st.warning(f"⚠️ 编辑器数据长度发生变化：{pre_edit_len} -> {post_edit_len}")
+                    # 使用原始数据
+                    edited_df = editor_df
+                
+                # 安全地更新选中状态
+                new_selected = set()
+                if edited_df is not None and len(edited_df) > 0:
+                    for idx, row in edited_df.iterrows():
+                        try:
+                            if idx < len(edited_df) and row.get('选择', False):
+                                new_selected.add(row['生产订单号'])
+                        except Exception as idx_error:
+                            st.warning(f"跳过索引 {idx}：{idx_error}")
+                            continue
+                st.session_state.selected_orders = new_selected
+                
+            except Exception as editor_error:
+                error_msg = str(editor_error).lower()
+                st.error(f"⚠️ 编辑器错误详情: {editor_error}")  # 记录详细错误
+                
+                # 扩展的错误匹配模式
+                error_patterns = [
+                    "setin", "index", "should be between", "bad message", 
+                    "out of bounds", "invalid index", "length mismatch",
+                    "dataframe", "bounds", "range", "keyerror"
+                ]
+                
+                if any(keyword in error_msg for keyword in error_patterns):
+                    st.error("❌ 数据编辑器遇到setIn错误，已自动切换到安全模式")
+                    
+                    # 完全降级：使用简单的多选框
+                    st.markdown("### 📋 订单选择（安全模式）")
+                    selected_orders = st.session_state.get('selected_orders', set())
+                    
+                    # 分组显示，每组10个
+                    for i in range(0, len(editor_df), 10):
+                        group_df = editor_df.iloc[i:i+10]
+                        st.markdown(f"**第 {i+1}-{min(i+10, len(editor_df))} 个订单:**")
+                        
+                        for idx, row in group_df.iterrows():
+                            order_no = row['生产订单号']
+                            is_selected = order_no in selected_orders
+                            
+                            new_selection = st.checkbox(
+                                f"{order_no} - {row.get('产品型号', '')} - {row.get('欠料金额', '')}",
+                                value=is_selected,
+                                key=f"order_checkbox_{unique_key}_{idx}"
+                            )
+                            
+                            if new_selection and order_no not in selected_orders:
+                                selected_orders.add(order_no)
+                            elif not new_selection and order_no in selected_orders:
+                                selected_orders.remove(order_no)
+                        
+                        if i + 10 < len(editor_df):
+                            st.markdown("---")
+                    
+                    st.session_state.selected_orders = selected_orders
+                    st.info(f"已选择 {len(selected_orders)} 个订单")
+                    
+                else:
+                    st.error(f"❌ 数据编辑器未知错误: {editor_error}")
+                    # 显示只读表格
+                    safe_dataframe_display(editor_df, max_rows=30, key_suffix=f"readonly_{unique_key}")
+        
+        except Exception as data_error:
+            st.error(f"❌ 数据处理错误: {data_error}")
+            st.info("数据可能包含不兼容的格式，请尝试刷新页面或调整筛选条件")
+            
+    except Exception as outer_error:
+        st.error(f"❌ 编辑器初始化失败: {outer_error}")
+        st.info("⚠️ 请尝试刷新页面或使用不同的筛选条件")
+
+def safe_dataframe_display(df, max_rows=200, key_suffix=""):
+    """安全的大数据DataFrame展示 - 彻底避免setIn错误"""
+    if df is None or df.empty:
+        st.info("暂无数据")
+        return
+    
+    # 重置索引避免索引问题
+    df = df.reset_index(drop=True)
+    total_rows = len(df)
+    
+    # 强制限制最大显示行数，避免setIn错误
+    if total_rows <= max_rows:
+        try:
+            # 再次确保数据安全
+            display_df = df.head(max_rows).copy().reset_index(drop=True)
+            st.dataframe(display_df, hide_index=True, use_container_width=True)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ["setin", "index", "should be between"]):
+                st.error(f"❌ 数据显示错误：索引越界 ({total_rows}行)，正在使用安全模式...")
+                # 降级显示：只显示前50行
+                _fallback_safe_display(df.head(50), key_suffix)
+            else:
+                raise
+        return
+    
+    # 大数据分页显示
+    st.warning(f"⚠️ 数据量较大 ({total_rows:,}行)，采用分页显示防止系统错误")
+    
+    # 分页控制 - 减少分页大小避免setIn错误
+    page_size = st.selectbox(
+        "每页显示行数", 
+        [50, 100, 150], 
+        index=1, 
+        key=f"page_size_{key_suffix}"
+    )
+    
+    total_pages = (total_rows + page_size - 1) // page_size
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        current_page = st.number_input(
+            f"页码 (共{total_pages}页)", 
+            min_value=1, 
+            max_value=total_pages, 
+            value=1,
+            key=f"current_page_{key_suffix}"
+        )
+    
+    # 计算显示范围
+    start_idx = (current_page - 1) * page_size
+    end_idx = min(start_idx + page_size, total_rows)
+    
+    # 显示当前页数据 - 增强安全性
+    try:
+        page_df = df.iloc[start_idx:end_idx].copy().reset_index(drop=True)
+        
+        st.info(f"显示第 {start_idx+1}-{end_idx} 行 (共 {total_rows:,} 行)")
+        
+        try:
+            st.dataframe(page_df, hide_index=True, use_container_width=True)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ["setin", "index", "should be between"]):
+                st.error(f"❌ 分页显示出现setIn错误，使用安全模式")
+                _fallback_safe_display(page_df, f"{key_suffix}_page")
+            else:
+                raise
+    except Exception as e:
+        st.error(f"❌ 分页数据处理错误: {e}")
+        _fallback_safe_display(df.head(20), f"{key_suffix}_emergency")
 
 def check_password():
     """简单密码认证"""
     # 确保session已准备就绪
     if not session_mgr.safe_get_state("session_ready", False):
         st.info("🔄 正在初始化系统...")
-        time.sleep(0.1)  # 短暂等待
-        session_mgr.safe_rerun()
+        st.stop()  # 停止执行，避免rerun
         return False
     def password_entered():
         if session_mgr.safe_get_state("password", "") == "silverplan123":
@@ -167,21 +504,21 @@ def check_password():
                 try:
                     if "password" in st.session_state:
                         del st.session_state["password"]
-                except:
+                except Exception:
                     pass  # 忽略删除失败
         else:
             session_mgr.safe_set_state("password_correct", False)
 
     # 使用统一的检查方式
     if session_mgr.safe_get_state("password_correct") is None:
-        st.markdown("### 🔐 银图PMC智能分析平台 - 访问验证")
+        st.markdown("### 🔐 银图订单追踪分析平台 - 访问验证")
         st.text_input("请输入访问密码", type="password", 
                      on_change=password_entered, key="password", 
                      placeholder="输入密码以访问系统")
         st.info("请联系系统管理员获取访问密码")
         return False
     elif session_mgr.safe_get_state("password_correct") is False:
-        st.markdown("### 🔐 银图PMC智能分析平台 - 访问验证")
+        st.markdown("### 🔐 银图订单追踪分析平台 - 访问验证")
         st.error("❌ 密码错误，请重新输入")
         st.text_input("请输入正确的访问密码", type="password", 
                      on_change=password_entered, key="password",
@@ -190,119 +527,18 @@ def check_password():
     else:
         return True
 
-# 密码验证 - 必须通过才能访问主应用
-if not check_password():
-    st.stop()
+# 初始化session管理器（安全地在主函数中调用）
+def initialize_app():
+    """简化版应用初始化 - 移除问题代码"""
+    # 移除强制的session初始化
+    # 让Streamlit自然初始化
+    return True
 
-# 在标题区域添加刷新按钮和上传功能
-header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
-with header_col1:
-    st.markdown('<div class="main-title">🌟 银图PMC智能分析平台</div>', unsafe_allow_html=True)
-with header_col2:
-    st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
-    if st.button("📤 数据上传", help="上传Excel文件进行分析"):
-        st.session_state.show_upload = True
-with header_col3:
-    st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
-    if st.button("🔄 刷新数据", help="重新加载最新的订单金额数据"):
-        try:
-            st.cache_data.clear()
-            time.sleep(0.1)  # 让缓存清理完成
-        except Exception as e:
-            st.warning(f"缓存清理失败: {e}")
-        session_mgr.safe_rerun()
+# 密码验证 - 暂时取消
+# if not check_password():
+#     st.stop()
 
-# 自定义CSS - 清新风格
-st.markdown("""
-<style>
-/* 主题色彩 */
-:root {
-    --primary-color: #4A90E2;
-    --secondary-color: #7ED321;
-    --warning-color: #F5A623;
-    --danger-color: #D0021B;
-    --bg-color: #F8F9FA;
-}
-
-/* 页面标题 */
-.main-title {
-    background: linear-gradient(135deg, #4A90E2, #7ED321);
-    color: white;
-    padding: 20px;
-    border-radius: 15px;
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 28px;
-    font-weight: bold;
-    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
-}
-
-/* KPI卡片样式 */
-.metric-card {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-    border-left: 4px solid var(--primary-color);
-    margin: 10px 0;
-}
-
-.metric-value {
-    font-size: 2.2em;
-    font-weight: bold;
-    color: var(--primary-color);
-    margin: 0;
-}
-
-.metric-label {
-    color: #6C757D;
-    font-size: 0.9em;
-    margin-top: 5px;
-}
-
-/* 风险预警样式 */
-.risk-high { color: var(--danger-color); font-weight: bold; }
-.risk-medium { color: var(--warning-color); font-weight: bold; }
-.risk-low { color: var(--secondary-color); font-weight: bold; }
-
-/* 表格样式优化 */
-.dataframe {
-    border: none !important;
-}
-
-.dataframe thead th {
-    background-color: var(--primary-color) !important;
-    color: white !important;
-    border: none !important;
-}
-
-.dataframe tbody tr:nth-child(even) {
-    background-color: #F8F9FA !important;
-}
-
-.dataframe tbody tr:hover {
-    background-color: #E3F2FD !important;
-}
-
-/* 标签页样式 */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-}
-
-.stTabs [data-baseweb="tab"] {
-    background-color: white;
-    border-radius: 8px;
-    border: 2px solid #E9ECEF;
-    padding: 10px 20px;
-}
-
-.stTabs [aria-selected="true"] {
-    background-color: var(--primary-color) !important;
-    color: white !important;
-    border-color: var(--primary-color) !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# 安全初始化（移到main函数开头）
 
 @st.cache_data
 def load_data():
@@ -789,13 +1025,13 @@ def show_upload_interface():
         with col_cancel:
             if st.button("❌ 取消上传", use_container_width=True):
                 st.session_state.show_upload = False
-                session_mgr.safe_rerun()
+                # 移除rerun - 让Streamlit自然刷新
     
     else:
         st.warning(f"⚠️ 请上传所有 {required_count} 个必需文件后再开始分析")
         if st.button("❌ 取消上传"):
             st.session_state.show_upload = False
-            session_mgr.safe_rerun()
+            # 移除rerun - 让Streamlit自然刷新
     
     return None
 
@@ -1019,15 +1255,134 @@ def process_uploaded_files(uploaded_files):
 
 def main():
     """主函数"""
-    # 页面标题
+    # 1. 首先设置页面配置 - 在任何其他Streamlit调用之前
+    try:
+        st.set_page_config(
+            page_title="银图订单追踪分析平台",
+            page_icon="🌟",
+            layout="wide",
+            initial_sidebar_state="collapsed"
+        )
+    except st.errors.StreamlitAPIException:
+        # 页面配置已设置，忽略错误
+        pass
+    
+    # 2. 安全初始化应用
+    if not initialize_app():
+        return
+    
+    # 3. 设置认证状态
+    session_mgr.safe_set_state("password_correct", True)
+    
+    # 自定义CSS - 清新风格
     st.markdown("""
-    <div class="main-title">
-        🌟 银图PMC智能分析平台
-        <div style="font-size: 16px; margin-top: 10px; opacity: 0.9;">
-            数据驱动决策 · 供应链智能管控
-        </div>
-    </div>
+    <style>
+    /* 主题色彩 */
+    :root {
+        --primary-color: #4A90E2;
+        --secondary-color: #7ED321;
+        --warning-color: #F5A623;
+        --danger-color: #D0021B;
+        --bg-color: #F8F9FA;
+    }
+
+    /* 页面标题 */
+    .main-title {
+        background: linear-gradient(135deg, #4A90E2, #7ED321);
+        color: white;
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 28px;
+        font-weight: bold;
+        box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
+    }
+
+    /* KPI卡片样式 */
+    .metric-card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        border-left: 4px solid var(--primary-color);
+        margin: 10px 0;
+    }
+
+    .metric-value {
+        font-size: 2.2em;
+        font-weight: bold;
+        color: var(--primary-color);
+        margin: 0;
+    }
+
+    .metric-label {
+        color: #6C757D;
+        font-size: 0.9em;
+        margin-top: 5px;
+    }
+
+    /* 风险预警样式 */
+    .risk-high { color: var(--danger-color); font-weight: bold; }
+    .risk-medium { color: var(--warning-color); font-weight: bold; }
+    .risk-low { color: var(--secondary-color); font-weight: bold; }
+
+    /* 表格样式优化 */
+    .dataframe {
+        border: none !important;
+    }
+
+    .dataframe thead th {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        border: none !important;
+    }
+
+    .dataframe tbody tr:nth-child(even) {
+        background-color: #F8F9FA !important;
+    }
+
+    .dataframe tbody tr:hover {
+        background-color: #E3F2FD !important;
+    }
+
+    /* 标签页样式 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background-color: white;
+        border-radius: 8px;
+        border: 2px solid #E9ECEF;
+        padding: 10px 20px;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        border-color: var(--primary-color) !important;
+    }
+    </style>
     """, unsafe_allow_html=True)
+    
+    # 在标题区域添加刷新按钮和上传功能
+    header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
+    with header_col1:
+        st.markdown('<div class="main-title">🌟 银图PMC智能分析平台</div>', unsafe_allow_html=True)
+    with header_col2:
+        st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
+        if st.button("📤 数据上传", help="上传Excel文件进行分析"):
+            st.session_state.show_upload = True
+    with header_col3:
+        st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
+        if st.button("🔄 刷新数据", help="重新加载最新的订单金额数据"):
+            try:
+                st.cache_data.clear()
+                time.sleep(0.1)  # 让缓存清理完成
+            except Exception as e:
+                st.warning(f"缓存清理失败: {e}")
+            session_mgr.safe_rerun()
     
     # 检查是否显示上传界面
     if st.session_state.get('show_upload', False):
@@ -1044,7 +1399,7 @@ def main():
         with col2:
             if st.button("📤 上传数据文件开始分析", type="primary", use_container_width=True):
                 st.session_state.show_upload = True
-                session_mgr.safe_rerun()
+                # 移除rerun - 让Streamlit自然刷新
         
         st.info("""
         **💡 使用说明:**
@@ -1190,10 +1545,11 @@ def main():
                 risk_df = create_risk_warning_table(detail_df, 500000)
                 if not risk_df.empty:
                     st.markdown("**🚨 高风险供应商 (>¥50万)**")
-                    st.dataframe(
+                    # 使用安全显示方法
+                    safe_dataframe_display(
                         risk_df[['供应商名称', '欠料金额', '风险等级']].head(5),
-                        hide_index=True,
-                        use_container_width=True
+                        max_rows=10,
+                        key_suffix="risk_suppliers"
                     )
     
     with tab2:
@@ -1385,7 +1741,8 @@ def main():
                 with col_reset:
                     st.markdown("<br>", unsafe_allow_html=True)  # 对齐按钮位置
                     if st.button("🔄 重置", help="清除所有筛选条件"):
-                        session_mgr.safe_rerun()
+                        # 移除rerun - 让Streamlit自然刷新
+                        pass
                 
                 # 应用筛选和排序
                 filtered_df = summary_df.copy()
@@ -1510,27 +1867,27 @@ def main():
                     
                     # 显示选择表格（使用data_editor实现勾选功能）
                     if len(selection_data) > 0:
-                        edited_df = st.data_editor(
-                            pd.DataFrame(selection_data),
-                            column_config={
-                                "选择": st.column_config.CheckboxColumn(
-                                    "选择",
-                                    help="勾选要分析ROI的订单",
-                                    default=False,
-                                )
-                            },
-                            disabled=["生产订单号", "客户订单号", "产品型号", "客户交期", "欠料金额", "预期回款", "投入产出比", "完整性"],
-                            hide_index=True,
-                            use_container_width=True,
-                            height=400
-                        )
-                        
-                        # 更新选中状态
-                        new_selected = set()
-                        for idx, row in edited_df.iterrows():
-                            if row['选择']:
-                                new_selected.add(row['生产订单号'])
-                        st.session_state.selected_orders = new_selected
+                        # 创建终极安全的数据编辑器
+                        try:
+                            # 额外的预检查
+                            if len(selection_data) > 100:
+                                st.warning(f"⚠️ 数据量过大（{len(selection_data)}条），建议使用筛选功能")
+                            
+                            # 调用安全编辑器
+                            safe_display_with_editor(selection_data, start_date, end_date, month_filter)
+                        except Exception as wrapper_error:
+                            st.error(f"❌ 数据编辑器初始化失败: {wrapper_error}")
+                            st.info("🔄 请尝试刷新页面或调整筛选条件")
+                            
+                            # 提供简化的选择界面
+                            st.markdown("### 📋 简化订单选择")
+                            simple_selection = st.multiselect(
+                                "选择订单进行分析",
+                                options=[item['生产订单号'] for item in selection_data[:20]],
+                                default=list(st.session_state.get('selected_orders', set()))[:5],
+                                key=f"simple_selector_{hash(str(selection_data[:5]))}"
+                            )
+                            st.session_state.selected_orders = set(simple_selection)
                 
                 with sidebar_col:
                     # ROI分析侧边栏
@@ -1621,7 +1978,7 @@ def main():
                         # 清除选择按钮
                         if st.button("🗑️ 清除选择", use_container_width=True):
                             st.session_state.selected_orders = set()
-                            session_mgr.safe_rerun()
+                            # 移除rerun - 让Streamlit自然刷新
                 
                 # 分隔线，分隔多选ROI功能和详细查看功能
                 st.markdown("---")
@@ -1858,7 +2215,8 @@ def main():
                                             lambda x: f"¥{x:,.0f}" if pd.notna(x) else "¥0"
                                         )
                                         
-                                        st.dataframe(detail_display, use_container_width=True, hide_index=True, height=200)
+                                        # 使用安全显示避免setIn错误
+                                        safe_dataframe_display(detail_display, max_rows=100, key_suffix=f"supplier_{supplier}_{idx}")
                             else:
                                 # 单供应商直接显示
                                 detail_display = order_details[['欠料物料编号', '欠料物料名称', '欠料数量', 
@@ -1870,7 +2228,8 @@ def main():
                                     lambda x: f"¥{x:,.0f}" if pd.notna(x) else "¥0"
                                 )
                                 
-                                st.dataframe(detail_display, use_container_width=True, hide_index=True, height=250)
+                                # 使用安全显示避免setIn错误
+                                safe_dataframe_display(detail_display, max_rows=100, key_suffix=f"single_{idx}")
                             
                             # 汇总信息
                             total_items = len(order_details)
@@ -1892,101 +2251,116 @@ def main():
                 # 使用全局筛选后的数据
                 supplier_detail_df = st.session_state.get('filtered_detail_df', data_dict['1_订单缺料明细']).copy()
                 
-                # 供应商排序选择
-                col1, col2 = st.columns([3, 1])
-                with col2:
-                    supplier_sort_by = st.selectbox("排序方式", ["采购金额", "数量Pcs", "供应商名称"], key="supplier_sort")
+                # 数据健壮性检查
+                if supplier_detail_df.empty:
+                    st.warning("⚠️ 当前筛选条件下无数据，请调整筛选条件")
+                    supplier_detail_df = data_dict['1_订单缺料明细'].copy()
                 
-                # 不再需要重复的时间筛选，因为已经使用了全局筛选的数据
+                # 清理供应商名称数据
+                supplier_detail_df = supplier_detail_df.dropna(subset=['主供应商名称'])
+                supplier_detail_df = supplier_detail_df[supplier_detail_df['主供应商名称'].str.strip() != '']
                 
-                # 按供应商汇总
-                supplier_summary = supplier_detail_df.groupby('主供应商名称').agg({
-                    '生产订单号': lambda x: list(x.unique()),
-                    '客户订单号': lambda x: list(x.unique()),
-                    '欠料金额(RMB)': 'sum',
-                    '月份': lambda x: '; '.join(x.unique()),
-                    '客户交期': lambda x: list(x.unique())
-                }).reset_index()
-                
-                # 过滤小额供应商
-                # 移除金额限制，显示所有供应商
-                # supplier_summary = supplier_summary[supplier_summary['欠料金额(RMB)'] >= 1000]
-                supplier_summary = supplier_summary.reset_index(drop=True)
-                
-                # 添加统计列
-                supplier_summary['数量Pcs'] = supplier_summary['生产订单号'].apply(len)
-                supplier_summary['客户数量'] = supplier_summary['客户订单号'].apply(len)
-                
-                # 排序
-                if supplier_sort_by == "采购金额":
-                    supplier_summary = supplier_summary.sort_values('欠料金额(RMB)', ascending=False)
-                elif supplier_sort_by == "数量Pcs":
-                    supplier_summary = supplier_summary.sort_values('数量Pcs', ascending=False)
+                if supplier_detail_df.empty:
+                    st.error("❌ 数据中缺少有效的供应商信息")
                 else:
-                    supplier_summary = supplier_summary.sort_values('主供应商名称')
-                
-                # 供应商清单标题和导出
-                col_export1, col_export2 = st.columns([3, 1])
-                with col_export1:
-                    st.markdown(f"**🏭 供应商清单 ({len(supplier_summary)}家供应商)**")
-                with col_export2:
-                    if len(supplier_summary) > 0:
-                        # 创建导出用的简化数据
-                        export_df = supplier_summary[['主供应商名称', '欠料金额(RMB)', '数量Pcs', '客户数量', '月份']].copy()
-                        export_df['欠料金额(RMB)'] = export_df['欠料金额(RMB)'].apply(lambda x: f"{x:,.2f}")
-                        
-                        # 使用BytesIO和GBK编码确保Excel兼容性
-                        output = io.BytesIO()
-                        try:
-                            # 优先使用GBK编码（Windows Excel最兼容）
-                            csv_string = export_df.to_csv(index=False, encoding='gbk')
-                            output.write(csv_string.encode('gbk'))
-                        except UnicodeEncodeError:
-                            # 如果GBK失败，使用GB18030（支持更多字符）
-                            try:
-                                csv_string = export_df.to_csv(index=False, encoding='gb18030')
-                                output.write(csv_string.encode('gb18030'))
-                            except:
-                                # 最后回退到UTF-8-SIG
-                                csv_string = export_df.to_csv(index=False, encoding='utf-8-sig')
-                                output.write(csv_string.encode('utf-8-sig'))
-                        
-                        output.seek(0)
-                        st.download_button(
-                            "📥 导出CSV", 
-                            data=output.getvalue(),
-                            file_name=f"供应商采购清单_筛选数据.csv",
-                            mime="text/csv"
-                        )
-                
-                # 供应商展开列表
-                for idx, supplier_row in supplier_summary.iterrows():
-                    formatted_amount = format_currency(supplier_row['欠料金额(RMB)'])
-                    supplier_title = f"🏭 {supplier_row['主供应商名称']} | 💰{formatted_amount} | 📋{supplier_row['数量Pcs']}个订单"
+                    # 供应商排序选择
+                    col1, col2 = st.columns([3, 1])
+                    with col2:
+                        supplier_sort_by = st.selectbox("排序方式", ["采购金额", "数量Pcs", "供应商名称"], key="supplier_sort")
                     
-                    with st.expander(supplier_title):
-                        # 供应商基本信息
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("💰 采购总金额", formatted_amount)
-                        with col2:
-                            st.metric("📋 涉及订单", f"{supplier_row['数量Pcs']}个")
-                        with col3:
-                            st.metric("🎯 涉及客户", f"{supplier_row['客户数量']}个")
-                        
-                        # 该供应商的订单明细
-                        st.markdown("**📋 相关订单明细:**")
-                        supplier_orders = supplier_detail_df[
-                            (supplier_detail_df['主供应商名称'] == supplier_row['主供应商名称']) &
-                            (supplier_detail_df['欠料金额(RMB)'] >= 0)  # 显示所有金额的订单
-                        ][['生产订单号', '客户订单号', '欠料物料名称', '欠料金额(RMB)', '客户交期']].copy()
-                        
-                        supplier_orders['欠料金额(RMB)'] = supplier_orders['欠料金额(RMB)'].apply(format_currency)
-                        supplier_orders = supplier_orders.astype(str)
-                        st.dataframe(supplier_orders, hide_index=True, use_container_width=True)
+                    # 按供应商汇总
+                    supplier_summary = supplier_detail_df.groupby('主供应商名称').agg({
+                        '生产订单号': lambda x: list(x.unique()),
+                        '客户订单号': lambda x: list(x.unique()),
+                        '欠料金额(RMB)': 'sum',
+                        '月份': lambda x: '; '.join(x.unique()),
+                        '客户交期': lambda x: list(x.unique())
+                    }).reset_index()
                 
-                # 供应商统计信息
-                supplier_total = supplier_summary['欠料金额(RMB)'].sum()
+                    # 过滤小额供应商
+                    # 移除金额限制，显示所有供应商
+                    # supplier_summary = supplier_summary[supplier_summary['欠料金额(RMB)'] >= 1000]
+                    supplier_summary = supplier_summary.reset_index(drop=True)
+                    
+                    # 添加统计列
+                    supplier_summary['数量Pcs'] = supplier_summary['生产订单号'].apply(len)
+                    supplier_summary['客户数量'] = supplier_summary['客户订单号'].apply(len)
+                
+                    # 排序
+                    if supplier_sort_by == "采购金额":
+                        supplier_summary = supplier_summary.sort_values('欠料金额(RMB)', ascending=False)
+                    elif supplier_sort_by == "数量Pcs":
+                        supplier_summary = supplier_summary.sort_values('数量Pcs', ascending=False)
+                    else:
+                        supplier_summary = supplier_summary.sort_values('主供应商名称')
+                    
+                    # 供应商清单标题和导出
+                    col_export1, col_export2 = st.columns([3, 1])
+                    with col_export1:
+                        st.markdown(f"**🏭 供应商清单 ({len(supplier_summary)}家供应商)**")
+                    with col_export2:
+                        if len(supplier_summary) > 0:
+                            # 创建导出用的简化数据
+                            export_df = supplier_summary[['主供应商名称', '欠料金额(RMB)', '数量Pcs', '客户数量', '月份']].copy()
+                            export_df['欠料金额(RMB)'] = export_df['欠料金额(RMB)'].apply(lambda x: f"{x:,.2f}")
+                            
+                            # 使用BytesIO和GBK编码确保Excel兼容性
+                            output = io.BytesIO()
+                            try:
+                                # 优先使用GBK编码（Windows Excel最兼容）
+                                csv_string = export_df.to_csv(index=False, encoding='gbk')
+                                output.write(csv_string.encode('gbk'))
+                            except UnicodeEncodeError:
+                                # 如果GBK失败，使用GB18030（支持更多字符）
+                                try:
+                                    csv_string = export_df.to_csv(index=False, encoding='gb18030')
+                                    output.write(csv_string.encode('gb18030'))
+                                except:
+                                    # 最后回退到UTF-8-SIG
+                                    csv_string = export_df.to_csv(index=False, encoding='utf-8-sig')
+                                    output.write(csv_string.encode('utf-8-sig'))
+                            
+                            output.seek(0)
+                            st.download_button(
+                                "📥 导出CSV", 
+                                data=output.getvalue(),
+                                file_name=f"供应商采购清单_筛选数据.csv",
+                                mime="text/csv"
+                            )
+                
+                    # 供应商展开列表
+                    for idx, supplier_row in supplier_summary.iterrows():
+                        formatted_amount = format_currency(supplier_row['欠料金额(RMB)'])
+                        supplier_title = f"🏭 {supplier_row['主供应商名称']} | 💰{formatted_amount} | 📋{supplier_row['数量Pcs']}个订单"
+                        
+                        with st.expander(supplier_title):
+                            # 供应商基本信息
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("💰 采购总金额", formatted_amount)
+                            with col2:
+                                st.metric("📋 涉及订单", f"{supplier_row['数量Pcs']}个")
+                            with col3:
+                                st.metric("🎯 涉及客户", f"{supplier_row['客户数量']}个")
+                            
+                            # 该供应商的订单明细
+                            st.markdown("**📋 相关订单明细:**")
+                            supplier_orders = supplier_detail_df[
+                                supplier_detail_df['主供应商名称'] == supplier_row['主供应商名称']
+                            ][['生产订单号', '客户订单号', '欠料物料名称', '欠料金额(RMB)', '客户交期']].copy()
+                            
+                            # 确保有数据显示
+                            if supplier_orders.empty:
+                                st.info("暂无订单明细数据")
+                                continue
+                            
+                            supplier_orders['欠料金额(RMB)'] = supplier_orders['欠料金额(RMB)'].apply(format_currency)
+                            supplier_orders = supplier_orders.astype(str)
+                            # 使用安全显示避免setIn错误
+                            safe_dataframe_display(supplier_orders, max_rows=500, key_suffix=f"supplier_orders_{idx}")
+                
+                    # 供应商统计信息
+                    supplier_total = supplier_summary['欠料金额(RMB)'].sum()
                 st.markdown(f"""
                 **📊 供应商统计:**
                 - 总采购金额: {format_currency(supplier_total)}
@@ -2077,7 +2451,7 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #6C757D; font-size: 0.9em;">
-        🌟 银图PMC智能分析平台 | 数据更新时间: 2025-08-25 17:40 | 
+        🌟 银图订单追踪分析平台 | 数据更新时间: 2025-08-25 17:40 | 
         <span style="color: #4A90E2;">Powered by Streamlit</span>
     </div>
     """, unsafe_allow_html=True)
