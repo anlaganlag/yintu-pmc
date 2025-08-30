@@ -25,7 +25,7 @@ class ComprehensivePMCAnalyzer:
         # 汇率设置（转换为RMB）
         self.currency_rates = {
             'RMB': 1.0,
-            'USD': 7.20,  # 1 USD = 7.20 RMB  
+            'USD': 7.30,  # 1 USD = 7.20 RMB  
             'HKD': 0.93,  # 1 HKD = 0.93 RMB
             'EUR': 7.85   # 1 EUR = 7.85 RMB
         }
@@ -520,6 +520,156 @@ class ComprehensivePMCAnalyzer:
         
         return result
     
+    def generate_ready_to_produce_orders(self):
+        """生成马上可以投入生产的订单表（不缺料订单）"""
+        print("=== 🚀 生成不缺料订单清单 ===")
+        
+        if self.final_result is None:
+            print("❌ 没有分析结果数据")
+            return None
+        
+        # 筛选不缺料订单：LEFT JOIN后物料编号为空的订单
+        ready_orders = self.final_result[
+            (self.final_result['物料编号'].isna() | (self.final_result['物料编号'] == '')) &  # 无欠料记录
+            (self.final_result['生产单号'].notna()) &  # 有生产订单号
+            (self.final_result['生产单号'] != '')      # 生产订单号非空
+        ].copy()
+        
+        print(f"   🔍 初步筛选不缺料记录: {len(ready_orders)}条")
+        
+        if ready_orders.empty:
+            print("   ⚠️ 未找到不缺料订单")
+            return None
+        
+        # 按生产订单号去重，保留订单基本信息
+        unique_ready_orders = ready_orders.groupby('生产单号').agg({
+            '客户订单号': 'first',
+            '产品型号': 'first', 
+            '数量Pcs': 'first',
+            '月份': 'first',
+            '数据来源工作表': 'first',
+            '目的地': 'first',
+            '客户交期': 'first',
+            'BOM编号': 'first',
+            '订单金额': 'first',
+            '订单金额(USD)': 'first',
+            '订单金额(RMB)': 'first',
+            '每元投入回款': 'first',
+            '数据完整性标记': 'first'
+        }).reset_index()
+        
+        # 添加不缺料标识
+        unique_ready_orders['缺料状态'] = '不缺料'
+        unique_ready_orders['生产状态'] = '可立即投产'
+        
+        # 重新排列列顺序，突出关键信息
+        output_columns = [
+            '生产单号', '客户订单号', '产品型号', '数量Pcs', 
+            '月份', '数据来源工作表', '目的地', '客户交期', 'BOM编号',
+            '缺料状态', '生产状态',
+            '订单金额(USD)', '订单金额(RMB)', '每元投入回款',
+            '数据完整性标记'
+        ]
+        
+        # 确保所有列都存在
+        for col in output_columns:
+            if col not in unique_ready_orders.columns:
+                unique_ready_orders[col] = ''
+        
+        # 选择输出列
+        final_ready_orders = unique_ready_orders[output_columns]
+        
+        # 数据清理
+        for col in ['订单金额(USD)', '订单金额(RMB)', '数量Pcs']:
+            if col in final_ready_orders.columns:
+                final_ready_orders[col] = pd.to_numeric(final_ready_orders[col], errors='coerce').fillna(0)
+        
+        # 按月份和数据来源分组统计
+        print(f"   ✅ 不缺料订单总数: {len(final_ready_orders)}个")
+        
+        stats_by_month = final_ready_orders.groupby(['月份', '数据来源工作表']).agg({
+            '生产单号': 'count',
+            '订单金额(RMB)': 'sum'
+        })
+        
+        print("   📊 按月份统计:")
+        for (month, source), row in stats_by_month.iterrows():
+            print(f"      {month}-{source}: {row['生产单号']}个订单, ¥{row['订单金额(RMB)']:,.2f}")
+        
+        return final_ready_orders
+    
+    def save_ready_to_produce_orders(self, ready_orders_df):
+        """保存不缺料订单清单到Excel"""
+        print("=== 💾 保存不缺料订单清单 ===")
+        
+        if ready_orders_df is None or ready_orders_df.empty:
+            print("❌ 没有不缺料订单数据")
+            return None
+        
+        filename = '8月9月不缺料订单清单.xlsx'
+        
+        try:
+            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                # 主表：不缺料订单清单
+                ready_orders_df.to_excel(writer, sheet_name='不缺料订单清单', index=False)
+                
+                # 统计表：按月份汇总
+                summary_data = ready_orders_df.groupby(['月份', '数据来源工作表']).agg({
+                    '生产单号': 'count',
+                    '数量Pcs': 'sum',
+                    '订单金额(USD)': 'sum',
+                    '订单金额(RMB)': 'sum'
+                }).reset_index()
+                
+                summary_data.rename(columns={
+                    '生产单号': '订单数量',
+                    '数量Pcs': '总数量Pcs',
+                    '订单金额(USD)': '总订单金额(USD)',
+                    '订单金额(RMB)': '总订单金额(RMB)'
+                }, inplace=True)
+                
+                summary_data.to_excel(writer, sheet_name='统计汇总', index=False)
+                
+                # 详细统计信息
+                total_orders = len(ready_orders_df)
+                total_pieces = ready_orders_df['数量Pcs'].sum()
+                total_amount_usd = ready_orders_df['订单金额(USD)'].sum()
+                total_amount_rmb = ready_orders_df['订单金额(RMB)'].sum()
+                
+                detail_stats = pd.DataFrame({
+                    '统计项目': [
+                        '不缺料订单总数', '总生产数量(Pcs)', 
+                        '总订单金额(USD)', '总订单金额(RMB)',
+                        '8月订单数', '9月订单数',
+                        '国内订单数', '柬埔寨订单数'
+                    ],
+                    '数值': [
+                        total_orders,
+                        total_pieces,
+                        f"${total_amount_usd:,.2f}",
+                        f"¥{total_amount_rmb:,.2f}",
+                        len(ready_orders_df[ready_orders_df['月份'] == '8月']),
+                        len(ready_orders_df[ready_orders_df['月份'] == '9月']),
+                        len(ready_orders_df[ready_orders_df['数据来源工作表'] == '国内']),
+                        len(ready_orders_df[ready_orders_df['数据来源工作表'] == '柬埔寨'])
+                    ]
+                })
+                
+                detail_stats.to_excel(writer, sheet_name='详细统计', index=False)
+                
+            print(f"✅ 不缺料订单清单已保存: {filename}")
+            print(f"📋 包含工作表:")
+            print(f"   1️⃣ 不缺料订单清单 ({total_orders}个订单)")
+            print(f"   2️⃣ 统计汇总")
+            print(f"   3️⃣ 详细统计")
+            print(f"💰 订单总价值: ${total_amount_usd:,.2f} / ¥{total_amount_rmb:,.2f}")
+            
+            return filename
+            
+        except Exception as e:
+            print(f"❌ 保存失败: {e}")
+            return None
+    
     def generate_comprehensive_report(self):
         """生成综合报表"""
         print("=== 📋 生成综合报表 ===")
@@ -689,15 +839,21 @@ class ComprehensivePMCAnalyzer:
             if not self.calculate_derived_fields():
                 return None
             
-            # 4. 生成报表
+            # 4. 生成不缺料订单清单
+            ready_orders_df = self.generate_ready_to_produce_orders()
+            ready_orders_filename = None
+            if ready_orders_df is not None:
+                ready_orders_filename = self.save_ready_to_produce_orders(ready_orders_df)
+            
+            # 5. 生成综合报表
             report_df = self.generate_comprehensive_report()
             if report_df is None:
                 return None
             
-            # 5. 保存报表
+            # 6. 保存综合报表
             filename = self.save_comprehensive_report(report_df)
             
-            # 6. 输出最终汇总
+            # 7. 输出最终汇总
             print("\n" + "="*80)
             print(" "*20 + "🎉 综合分析完成！")
             print("="*80)
@@ -720,13 +876,21 @@ class ComprehensivePMCAnalyzer:
             print(f"   - 总订单金额: ¥{total_order_amount:,.2f}")
             print(f"   - 平均投资回报: {avg_roi:.2f}倍")
             
+            # 显示不缺料订单信息
+            if ready_orders_df is not None:
+                ready_orders_count = len(ready_orders_df)
+                ready_orders_amount = ready_orders_df['订单金额(RMB)'].sum()
+                print(f"   - 不缺料订单数: {ready_orders_count}个")
+                print(f"   - 不缺料订单金额: ¥{ready_orders_amount:,.2f}")
+                print(f"   - 不缺料比例: {ready_orders_count/total_orders*100:.1f}%")
+            
+            print("\n📄 生成文件:")
+            if ready_orders_filename:
+                print(f"   🚀 {ready_orders_filename} (不缺料订单清单)")
             if filename:
-                print(f"📄 报表文件: {filename}")
-                print("📋 包含工作表:")
-                print("   1️⃣ 综合物料分析明细 (主表)")
-                print("   2️⃣ 汇总统计")
+                print(f"   📋 {filename} (综合分析报表)")
                 
-            return report_df, filename
+            return report_df, filename, ready_orders_df
             
         except Exception as e:
             print(f"❌ 分析过程出错: {e}")

@@ -177,49 +177,94 @@ class RobustSessionManager:
         
         # 简化rerun，减少WebSocket任务
         try:
-            st.rerun()
+                st.rerun()
         except Exception:
             # 静默处理所有rerun异常，避免WebSocket错误
             pass
     
     def safe_get_state(self, key: str, default=None):
-        """简化版安全获取 - 延迟访问"""
-        # 优先使用缓存
+        """超级安全获取 - 多层保护SessionInfo错误"""
+        # 第一层：优先使用缓存
         if key in self.state_cache:
             return self.state_cache[key]
         
+        # 第二层：检查Streamlit是否完全可用
         try:
-            # 首次访问时才接触session_state
-            if hasattr(st, 'session_state') and hasattr(st.session_state, 'get'):
-                value = st.session_state.get(key, default)
-                self.state_cache[key] = value
-                return value
-        except Exception as e:
-            error_msg = str(e).lower()
-            if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
-                pass  # 静默失败
+            if not hasattr(st, 'session_state'):
+                self.state_cache[key] = default
+                return default
+        except Exception:
+            self.state_cache[key] = default
+            return default
         
-        # 回退到默认值
-        return self.state_cache.get(key, default)
+        # 第三层：安全访问session_state
+        for attempt in range(3):  # 重试3次
+            try:
+                # 多重验证
+                if hasattr(st, 'session_state') and hasattr(st.session_state, 'get'):
+                    # 检查SessionInfo是否已初始化
+                    value = st.session_state.get(key, default)
+                    self.state_cache[key] = value
+                    return value
+            except Exception as e:
+                error_msg = str(e).lower()
+                error_patterns = [
+                    "sessioninfo", "message format", "bad message", 
+                    "setin", "not initialized", "websocket", "tornado"
+                ]
+                if any(pattern in error_msg for pattern in error_patterns):
+                    if attempt < 2:  # 不是最后一次尝试
+                        time.sleep(0.05 * (attempt + 1))  # 递增延迟
+                        continue
+                    else:
+                        # 最后一次失败，静默处理
+                        break
+                else:
+                    # 非SessionInfo相关错误，直接抛出
+                    raise
+        
+        # 第四层：回退到默认值
+        self.state_cache[key] = default
+        return default
     
     def safe_set_state(self, key: str, value):
-        """简化版安全设置 - 缓存优先"""
-        # 总是更新缓存
+        """超级安全设置 - 多层保护SessionInfo错误"""
+        # 第一层：总是更新缓存
         self.state_cache[key] = value
         
+        # 第二层：检查Streamlit是否完全可用
         try:
-            # 只有在session确实可用时才写入
-            if hasattr(st, 'session_state') and hasattr(st.session_state, '__setitem__'):
-                st.session_state[key] = value
-                return True
-        except Exception as e:
-            error_msg = str(e).lower()
-            if any(x in error_msg for x in ["sessioninfo", "message format", "bad message", "setin"]):
-                pass  # 静默失败，缓存已更新
-            else:
-                raise
+            if not hasattr(st, 'session_state'):
+                return False  # 缓存已更新
+        except Exception:
+            return False  # 缓存已更新
         
-        return False  # 缓存成功，session失败
+        # 第三层：安全写入session_state
+        for attempt in range(3):  # 重试3次
+            try:
+                # 多重验证
+                if hasattr(st, 'session_state') and hasattr(st.session_state, '__setitem__'):
+                    st.session_state[key] = value
+                    return True
+            except Exception as e:
+                error_msg = str(e).lower()
+                error_patterns = [
+                    "sessioninfo", "message format", "bad message", 
+                    "setin", "not initialized", "websocket", "tornado"
+                ]
+                if any(pattern in error_msg for pattern in error_patterns):
+                    if attempt < 2:  # 不是最后一次尝试
+                        time.sleep(0.05 * (attempt + 1))  # 递增延迟
+                        continue
+                    else:
+                        # 最后一次失败，静默处理
+                        break
+                else:
+                    # 非SessionInfo相关错误，直接抛出
+                    raise
+        
+        # 第四层：缓存成功，session失败
+        return False
 
 # 全局管理器实例
 session_mgr = RobustSessionManager()
@@ -2293,7 +2338,7 @@ def main():
                         supplier_summary = supplier_summary.sort_values('数量Pcs', ascending=False)
                     else:
                         supplier_summary = supplier_summary.sort_values('主供应商名称')
-                    
+                
                     # 供应商清单标题和导出
                     col_export1, col_export2 = st.columns([3, 1])
                     with col_export1:
@@ -2303,7 +2348,7 @@ def main():
                             # 创建导出用的简化数据
                             export_df = supplier_summary[['主供应商名称', '欠料金额(RMB)', '数量Pcs', '客户数量', '月份']].copy()
                             export_df['欠料金额(RMB)'] = export_df['欠料金额(RMB)'].apply(lambda x: f"{x:,.2f}")
-                            
+                        
                             # 使用BytesIO和GBK编码确保Excel兼容性
                             output = io.BytesIO()
                             try:
@@ -2319,21 +2364,21 @@ def main():
                                     # 最后回退到UTF-8-SIG
                                     csv_string = export_df.to_csv(index=False, encoding='utf-8-sig')
                                     output.write(csv_string.encode('utf-8-sig'))
-                            
+                        
                             output.seek(0)
                             st.download_button(
-                                "📥 导出CSV", 
-                                data=output.getvalue(),
-                                file_name=f"供应商采购清单_筛选数据.csv",
-                                mime="text/csv"
+                            "📥 导出CSV", 
+                            data=output.getvalue(),
+                            file_name=f"供应商采购清单_筛选数据.csv",
+                            mime="text/csv"
                             )
                 
-                    # 供应商展开列表
-                    for idx, supplier_row in supplier_summary.iterrows():
-                        formatted_amount = format_currency(supplier_row['欠料金额(RMB)'])
-                        supplier_title = f"🏭 {supplier_row['主供应商名称']} | 💰{formatted_amount} | 📋{supplier_row['数量Pcs']}个订单"
-                        
-                        with st.expander(supplier_title):
+                # 供应商展开列表
+                for idx, supplier_row in supplier_summary.iterrows():
+                    formatted_amount = format_currency(supplier_row['欠料金额(RMB)'])
+                    supplier_title = f"🏭 {supplier_row['主供应商名称']} | 💰{formatted_amount} | 📋{supplier_row['数量Pcs']}个订单"
+                    
+                    with st.expander(supplier_title):
                             # 供应商基本信息
                             col1, col2, col3 = st.columns(3)
                             with col1:
@@ -2342,13 +2387,13 @@ def main():
                                 st.metric("📋 涉及订单", f"{supplier_row['数量Pcs']}个")
                             with col3:
                                 st.metric("🎯 涉及客户", f"{supplier_row['客户数量']}个")
-                            
+                        
                             # 该供应商的订单明细
                             st.markdown("**📋 相关订单明细:**")
                             supplier_orders = supplier_detail_df[
                                 supplier_detail_df['主供应商名称'] == supplier_row['主供应商名称']
                             ][['生产订单号', '客户订单号', '欠料物料名称', '欠料金额(RMB)', '客户交期']].copy()
-                            
+                        
                             # 确保有数据显示
                             if supplier_orders.empty:
                                 st.info("暂无订单明细数据")
@@ -2359,8 +2404,8 @@ def main():
                             # 使用安全显示避免setIn错误
                             safe_dataframe_display(supplier_orders, max_rows=500, key_suffix=f"supplier_orders_{idx}")
                 
-                    # 供应商统计信息
-                    supplier_total = supplier_summary['欠料金额(RMB)'].sum()
+                # 供应商统计信息
+                supplier_total = supplier_summary['欠料金额(RMB)'].sum()
                 st.markdown(f"""
                 **📊 供应商统计:**
                 - 总采购金额: {format_currency(supplier_total)}
