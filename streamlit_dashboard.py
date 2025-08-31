@@ -615,11 +615,10 @@ def load_data():
         
         # 收集所有可能的报告文件
         all_report_patterns = [
-            "银图PMC综合物料分析报告_*.xlsx",  # 最新的综合报告（当前目录）
-            r"D:\yingtu-PMC\精准供应商物料分析报告_含回款_*.xlsx",  # 含回款报告
-            r"D:\yingtu-PMC\精准供应商物料分析报告_2025*.xlsx",  # 基础报告（PMC目录）
-            "精准供应商物料分析报告_*.xlsx"  # 其他报告（当前目录）
+            "银图PMC综合物料分析报告_*.xlsx" # 最新的综合报告（当前目录）
         ]
+        
+
         
         all_files = []
         for pattern in all_report_patterns:
@@ -630,27 +629,18 @@ def load_data():
             # 按修改时间排序，选择最新的文件
             latest_file = max(all_files, key=lambda x: x[1])[0]
             latest_report = latest_file
-            
-            # 判断文件格式并加载
-            if "含回款" in latest_report:
-                # 含回款报告是单工作表格式
-                df = pd.read_excel(latest_report)
-                excel_data = {'1_订单缺料明细': df}
-                print(f"✅ 加载含回款报告: {latest_report}")
-            else:
+            print("=" * 60)
+            print(f"🎯 当前使用的报告文件: {latest_report}")
+            print("=" * 60)
+            print(f"✅ 加载最新报告: {latest_report}")
+
                 # 其他报告是多工作表格式
-                excel_data = pd.read_excel(latest_report, sheet_name=None)
-                # 如果是综合报告，需要映射工作表名称
-                if "综合物料分析明细" in excel_data:
-                    excel_data['1_订单缺料明细'] = excel_data.pop('综合物料分析明细')
-                print(f"✅ 加载最新报告: {latest_report}")
-        # 回退到原报告
-        else:
-            excel_data = pd.read_excel(
-                r"D:\yingtu-PMC\精准供应商物料分析报告_20250825_1740.xlsx",
-                sheet_name=None
-            )
-            print("✅ 加载原报告")
+            excel_data = pd.read_excel(latest_report, sheet_name=None)
+            # 如果是综合报告，需要映射工作表名称
+            if "综合物料分析明细" in excel_data:
+                excel_data['1_订单缺料明细'] = excel_data.pop('综合物料分析明细')
+            print(f"✅ 加载最新报告: {latest_report}")
+
         
         # 修复数据类型问题，确保字符串列保持为字符串类型
         for sheet_name, df in excel_data.items():
