@@ -1332,7 +1332,31 @@ def main():
         # 页面配置已设置，忽略错误
         pass
     
-    # 2. 安全初始化应用
+    # 2. 密码验证
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        st.markdown('<div style="text-align: center;"><h1>🔐 系统登录</h1></div>', unsafe_allow_html=True)
+        st.markdown('<br><br>', unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            # 使用form来支持Enter键提交
+            with st.form("login_form"):
+                password = st.text_input("请输入访问密码", type="password", key="login_password")
+                submitted = st.form_submit_button("登录", use_container_width=True)
+                
+                if submitted:
+                    if password == "silverplan123":
+                        st.session_state.authenticated = True
+                        st.success("登录成功！正在跳转...")
+                        st.rerun()
+                    else:
+                        st.error("密码错误，请重试")
+        return
+    
+    # 3. 安全初始化应用
     if not initialize_app():
         return
     
