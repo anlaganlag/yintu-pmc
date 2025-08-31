@@ -14,8 +14,18 @@ import io
 import os
 import tempfile
 import time
+import hashlib
 from contextlib import contextmanager
 import functools
+
+# PMC缓存系统集成
+try:
+    from pmc_cache_adapter import pmc_cache, pmc_cached
+    CACHE_ENABLED = True
+    print("✅ PMC缓存系统已启用")
+except ImportError:
+    CACHE_ENABLED = False
+    print("⚠️ PMC缓存系统未找到，将使用标准缓存")
 
 # 页面配置将在main函数中调用，避免模块级别的Streamlit调用
 
@@ -585,9 +595,19 @@ def initialize_app():
 
 # 安全初始化（移到main函数开头）
 
-@st.cache_data
+@st.cache_data(ttl=1800)
 def load_data():
-    """加载Excel数据"""
+    """加载Excel数据（带缓存增强）"""
+    try:
+        if CACHE_ENABLED:
+            # 尝试从PMC缓存获取
+            cached_data = pmc_cache.get_analysis_report()
+            if cached_data:
+                print("✅ 从PMC缓存加载数据")
+                return cached_data
+    except Exception as e:
+        print(f"⚠️ PMC缓存加载失败: {e}")
+    
     try:
         # 尝试加载最新的分析报告（按时间戳排序，最新优先）
         import glob
@@ -652,6 +672,14 @@ def load_data():
                 for col in numeric_columns:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # 如果启用PMC缓存，存储数据
+        if CACHE_ENABLED and excel_data:
+            try:
+                pmc_cache.set_analysis_report(excel_data)
+                print("✅ 数据已缓存到PMC缓存")
+            except Exception as e:
+                print(f"⚠️ PMC缓存存储失败: {e}")
         
         return excel_data
     except FileNotFoundError:
@@ -760,7 +788,9 @@ def create_kpi_cards(data_dict, detail_df=None):
         
         # 计算高回报项目数量（投入产出比>2）
         if '每元投入回款' in detail_df.columns:
-            valid_ratios = detail_df['每元投入回款'].replace([float('inf'), -float('inf')], None).dropna()
+            # 确保数据类型正确，先转换为数值类型
+            roi_series = pd.to_numeric(detail_df['每元投入回款'], errors='coerce')
+            valid_ratios = roi_series.replace([float('inf'), -float('inf')], None).dropna()
             high_return_count = (valid_ratios > 2.0).sum()
         else:
             high_return_count = 0
@@ -1429,6 +1459,18 @@ def main():
                 st.warning(f"缓存清理失败: {e}")
             session_mgr.safe_rerun()
     
+    # 数据可用性预检查和状态重置
+    try:
+        from pmc_cache_adapter import pmc_cache
+        cached_data = pmc_cache.get_analysis_report()
+        if cached_data and '1_订单缺料明细' in cached_data:
+            # 如果有缓存数据但是show_upload=True，可能是状态异常，重置状态
+            if st.session_state.get('show_upload', False):
+                st.session_state.show_upload = False
+                st.info("🔄 检测到数据已可用，已自动重置界面状态")
+    except Exception:
+        pass  # 忽略预检查错误
+    
     # 检查是否显示上传界面
     if st.session_state.get('show_upload', False):
         show_upload_interface()
@@ -1436,6 +1478,23 @@ def main():
     
     # 加载数据
     data_dict = load_data()
+    
+    # 添加调试信息（可选显示）
+    if st.sidebar.checkbox("🐛 显示调试信息", value=False):
+        with st.sidebar.expander("调试面板"):
+            st.write(f"**数据状态**: {'✅ 有效' if data_dict else '❌ 无效'}")
+            if data_dict:
+                st.write(f"**工作表数**: {len(data_dict)}")
+                st.write(f"**工作表名**: {list(data_dict.keys())}")
+                if '1_订单缺料明细' in data_dict:
+                    main_df = data_dict['1_订单缺料明细']
+                    st.write(f"**主表行数**: {len(main_df)}")
+                    st.write(f"**主表列数**: {len(main_df.columns)}")
+            st.write(f"**Session状态**: show_upload={st.session_state.get('show_upload', 'None')}")
+            if st.button("🔄 强制重置状态"):
+                st.session_state.show_upload = False
+                st.success("状态已重置")
+    
     if not data_dict:
         # 如果没有数据，提供上传选项
         st.warning("⚠️ 未找到分析报告数据")
@@ -1529,7 +1588,10 @@ def main():
     st.markdown("---")
     
     # 创建标签页
-    tab1, tab2, tab3 = st.tabs(["🏢 管理总览", "🛒 采购清单", "📈 深度分析"])
+    if CACHE_ENABLED:
+        tab1, tab2, tab3, tab_cache = st.tabs(["🏢 管理总览", "🛒 采购清单", "📈 深度分析", "🗄️ 缓存管理"])
+    else:
+        tab1, tab2, tab3 = st.tabs(["🏢 管理总览", "🛒 采购清单", "📈 深度分析"])
     
     with tab1:
         st.markdown("### 🏢 管理总览")
@@ -1760,12 +1822,14 @@ def main():
                 
                 # 预计算筛选统计（提升用户体验）
                 complete_count = len(summary_df[summary_df['数据完整性标记'] == '完整'])
-                high_return_count = len(summary_df[pd.to_numeric(summary_df['每元投入回款'], errors='coerce') > 2.0])
+                roi_numeric = pd.to_numeric(summary_df['每元投入回款'], errors='coerce')
+                high_return_count = len(summary_df[roi_numeric > 2.0])
                 urgent_date = pd.to_datetime('2025-09-10').date()
                 summary_df_temp = summary_df.copy()
                 summary_df_temp['客户交期_date'] = pd.to_datetime(summary_df_temp['客户交期'], errors='coerce').dt.date
+                roi_temp_numeric = pd.to_numeric(summary_df_temp['每元投入回款'], errors='coerce')
                 urgent_count = len(summary_df_temp[
-                    (pd.to_numeric(summary_df_temp['每元投入回款'], errors='coerce') > 2.0) &
+                    (roi_temp_numeric > 2.0) &
                     (summary_df_temp['客户交期_date'] <= urgent_date)
                 ])
                 
@@ -1819,15 +1883,17 @@ def main():
                 
                 # 高回报筛选
                 if high_return_only:
-                    filtered_df = filtered_df[(pd.to_numeric(filtered_df['每元投入回款'], errors='coerce') > 2.0)]
+                    roi_filtered_numeric = pd.to_numeric(filtered_df['每元投入回款'], errors='coerce')
+                    filtered_df = filtered_df[roi_filtered_numeric > 2.0]
                     filter_applied = True
                 
                 # 紧急高回报筛选
                 if urgent_projects:
                     filtered_df['客户交期_date'] = pd.to_datetime(filtered_df['客户交期'], errors='coerce').dt.date
                     urgent_date = pd.to_datetime('2025-09-10').date()
+                    roi_urgent_numeric = pd.to_numeric(filtered_df['每元投入回款'], errors='coerce')
                     filtered_df = filtered_df[
-                        (pd.to_numeric(filtered_df['每元投入回款'], errors='coerce') > 2.0) &
+                        (roi_urgent_numeric > 2.0) &
                         (filtered_df['客户交期_date'] <= urgent_date)
                     ]
                     filtered_df = filtered_df.drop('客户交期_date', axis=1)
@@ -1866,8 +1932,8 @@ def main():
                 with main_col:
                     st.markdown("#### 📋 订单选择")
                     
-                    # 全选功能
-                    col_select_all, col_info, col_auto_sync = st.columns([1, 2, 2])
+                    # 全选功能和快速导出
+                    col_select_all, col_info, col_quick_export = st.columns([1, 2, 2])
                     with col_select_all:
                         select_all = st.checkbox("全选", key="select_all_orders")
                         if select_all:
@@ -1880,8 +1946,41 @@ def main():
                         total_count = len(filtered_df)
                         st.markdown(f"**已选择**: {selected_count}/{total_count} 个订单")
                     
-                    with col_auto_sync:
-                        st.info("🔄 日期筛选后自动勾选对应订单")
+                    with col_quick_export:
+                        if st.button("⚡ 全选并导出ROI", help="一键导出全部订单ROI分析，按ROI降序排列"):
+                            # 自动全选
+                            st.session_state.selected_orders = set(filtered_df['生产订单号'].tolist())
+                            # 计算全部订单的ROI
+                            all_orders_summary = filtered_df.groupby('生产订单号').agg({
+                                '订单金额(RMB)': 'first',
+                                '欠料金额(RMB)': 'sum'
+                            }).reset_index()
+                            all_orders_summary['订单ROI'] = np.where(
+                                all_orders_summary['欠料金额(RMB)'] > 0,
+                                all_orders_summary['订单金额(RMB)'] / all_orders_summary['欠料金额(RMB)'],
+                                999  # 无欠料订单设为999倍
+                            )
+                            # 按ROI降序排列
+                            all_orders_summary = all_orders_summary.sort_values('订单ROI', ascending=False)
+                            # 格式化导出数据
+                            all_orders_summary['投入金额(RMB)'] = all_orders_summary['欠料金额(RMB)'].apply(lambda x: f"{x:,.2f}")
+                            all_orders_summary['回款金额(RMB)'] = all_orders_summary['订单金额(RMB)'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "待补充")
+                            all_orders_summary['ROI倍数'] = all_orders_summary['订单ROI'].apply(lambda x: "无需投入" if x == 999 else f"{x:.2f}")
+                            
+                            final_all_export = all_orders_summary[['生产订单号', '投入金额(RMB)', '回款金额(RMB)', 'ROI倍数']].copy()
+                            
+                            csv_all_output = io.BytesIO()
+                            csv_all_string = final_all_export.to_csv(index=False, encoding='gbk')
+                            csv_all_output.write(csv_all_string.encode('gbk'))
+                            csv_all_output.seek(0)
+                            
+                            st.download_button(
+                                "💾 下载完整ROI报告", 
+                                data=csv_all_output.getvalue(),
+                                file_name=f"完整ROI分析报告_{len(all_orders_summary)}个订单_按ROI排序.csv",
+                                mime="text/csv",
+                                key="download_all_roi"
+                            )
                     
                     # 订单选择表格
                     selection_data = []
@@ -2020,10 +2119,36 @@ def main():
                             st.markdown(f"- 总回款：{format_currency(total_order_amount)}")
                             st.markdown(f"- 净收益：{format_currency(total_order_amount - total_shortage)}")
                         
-                        # 清除选择按钮
-                        if st.button("🗑️ 清除选择", use_container_width=True):
-                            st.session_state.selected_orders = set()
-                            # 移除rerun - 让Streamlit自然刷新
+                        # 快速操作按钮
+                        roi_col1, roi_col2 = st.columns(2)
+                        with roi_col1:
+                            if st.button("📥 导出ROI分析", use_container_width=True):
+                                # 创建ROI导出数据（按ROI降序排列）
+                                export_roi_df = selected_order_summary.copy()
+                                export_roi_df = export_roi_df.sort_values('订单ROI', ascending=False)
+                                export_roi_df['投入金额(RMB)'] = export_roi_df['欠料金额(RMB)'].apply(lambda x: f"{x:,.2f}")
+                                export_roi_df['回款金额(RMB)'] = export_roi_df['订单金额(RMB)'].apply(lambda x: f"{x:,.2f}")
+                                export_roi_df['ROI倍数'] = export_roi_df['订单ROI'].apply(lambda x: f"{x:.2f}")
+                                
+                                # 选择导出列
+                                final_export = export_roi_df[['生产订单号', '投入金额(RMB)', '回款金额(RMB)', 'ROI倍数']].copy()
+                                
+                                # 生成CSV
+                                csv_output = io.BytesIO()
+                                csv_string = final_export.to_csv(index=False, encoding='gbk')
+                                csv_output.write(csv_string.encode('gbk'))
+                                csv_output.seek(0)
+                                
+                                st.download_button(
+                                    "💾 下载ROI分析报告", 
+                                    data=csv_output.getvalue(),
+                                    file_name=f"ROI分析报告_{selected_count}个订单_按ROI排序.csv",
+                                    mime="text/csv"
+                                )
+                        with roi_col2:
+                            if st.button("🗑️ 清除选择", use_container_width=True):
+                                st.session_state.selected_orders = set()
+                                # 移除rerun - 让Streamlit自然刷新
                 
                 # 分隔线，分隔多选ROI功能和详细查看功能
                 st.markdown("---")
@@ -2089,10 +2214,10 @@ def main():
                     ]
                 
                 # 应用ROI筛选
+                roi_values = pd.to_numeric(expander_orders['每元投入回款'], errors='coerce')
                 if roi_filter == "高回报(>2.0)":
-                    expander_orders = expander_orders[pd.to_numeric(expander_orders['每元投入回款'], errors='coerce') > 2.0]
+                    expander_orders = expander_orders[roi_values > 2.0]
                 elif roi_filter == "中等(1.0-2.0)":
-                    roi_values = pd.to_numeric(expander_orders['每元投入回款'], errors='coerce')
                     expander_orders = expander_orders[(roi_values >= 1.0) & (roi_values <= 2.0)]
                 elif roi_filter == "待补充":
                     expander_orders = expander_orders[expander_orders['数据完整性标记'] != '完整']
@@ -2491,6 +2616,142 @@ def main():
                 - 平均可选供应商: {multi_stats['供应商数量'].mean():.1f}家
                 - 最大节省潜力: {top_diff['价格差异率'].max():.1f}%
                 """)
+    
+    # 缓存管理标签页
+    if CACHE_ENABLED:
+        with tab_cache:
+            st.markdown("### 🗄️ 缓存管理")
+            
+            try:
+                # 获取缓存健康状态
+                health = pmc_cache.get_cache_health()
+                
+                # 显示健康评分
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("缓存健康评分", health['health_score'])
+                with col2:
+                    hit_rate = health['overall_stats'].get('hit_rate', '0%')
+                    st.metric("缓存命中率", hit_rate)
+                with col3:
+                    total_keys = health['overall_stats'].get('total_keys', 0)
+                    st.metric("缓存条目", f"{total_keys}个")
+                
+                # 显示详细统计
+                stats = health['overall_stats']
+                
+                st.markdown("#### 📊 详细统计")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("缓存大小", f"{stats.get('total_size_mb', 0):.1f}MB")
+                    st.metric("总访问", f"{stats.get('total_accesses', 0)}次")
+                
+                with col2:
+                    st.metric("缓存命中", f"{stats.get('runtime_stats', {}).get('hits', 0)}次")
+                    st.metric("缓存未命中", f"{stats.get('runtime_stats', {}).get('misses', 0)}次")
+                
+                with col3:
+                    st.metric("活跃键", f"{stats.get('active_keys', 0)}个")
+                    st.metric("永久键", f"{stats.get('permanent_keys', 0)}个")
+                
+                with col4:
+                    st.metric("过期键", f"{stats.get('expired_keys', 0)}个")
+                    st.metric("设置操作", f"{stats.get('runtime_stats', {}).get('sets', 0)}次")
+                
+                # 显示优化建议
+                st.markdown("#### 💡 优化建议")
+                for recommendation in health['recommendations']:
+                    if recommendation.startswith('✅'):
+                        st.success(recommendation)
+                    elif recommendation.startswith('⚠️'):
+                        st.warning(recommendation)
+                    elif recommendation.startswith('💾'):
+                        st.info(recommendation)
+                    else:
+                        st.info(recommendation)
+                
+                # 缓存操作
+                st.markdown("#### 🛠️ 缓存操作")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    if st.button("🧹 清理过期缓存", help="清除所有过期的缓存项"):
+                        cleared = pmc_cache.cache.clear_expired()
+                        if cleared > 0:
+                            st.success(f"✅ 已清理 {cleared} 个过期缓存")
+                        else:
+                            st.info("📋 无过期缓存需要清理")
+                
+                with col2:
+                    if st.button("🔄 清除分析缓存", help="清除所有分析和筛选相关缓存"):
+                        cleared = pmc_cache.clear_analysis_cache()
+                        if cleared > 0:
+                            st.success(f"✅ 已清除 {cleared} 个分析缓存")
+                            st.experimental_rerun()
+                        else:
+                            st.info("📋 无分析缓存需要清理")
+                
+                with col3:
+                    if st.button("🗑️ 清除参考缓存", help="清除订单和供应商参考数据缓存"):
+                        cleared = pmc_cache.clear_reference_cache()
+                        if cleared > 0:
+                            st.success(f"✅ 已清除 {cleared} 个参考缓存")
+                        else:
+                            st.info("📋 无参考缓存需要清理")
+                
+                with col4:
+                    if st.button("📊 刷新统计", help="重新计算缓存统计信息"):
+                        st.experimental_rerun()
+                
+                # 显示缓存分类分布
+                if health.get('cache_types'):
+                    st.markdown("#### 📂 缓存分类分布")
+                    cache_types_data = []
+                    for cache_type, count in health['cache_types'].items():
+                        cache_types_data.append({
+                            '缓存类型': cache_type,
+                            '数量': count,
+                            '描述': {
+                                'analysis_report': '分析报告数据',
+                                'filtered_data': '筛选后的数据',
+                                'roi_calculation': 'ROI计算结果',
+                                'summary_stats': '汇总统计信息',
+                                'stable_data': '稳定数据快照',
+                                'reference': '参考数据'
+                            }.get(cache_type, '其他数据')
+                        })
+                    
+                    cache_types_df = pd.DataFrame(cache_types_data)
+                    st.dataframe(cache_types_df, use_container_width=True)
+                
+                # 缓存配置信息
+                with st.expander("⚙️ 缓存配置信息", expanded=False):
+                    config_info = {
+                        '分析报告': {'TTL': '1小时', '标签': 'analysis,report'},
+                        '筛选数据': {'TTL': '30分钟', '标签': 'filter,data'},
+                        'ROI计算': {'TTL': '45分钟', '标签': 'calculation,roi'},
+                        '统计信息': {'TTL': '15分钟', '标签': 'stats,summary'},
+                        '供应商数据': {'TTL': '2小时', '标签': 'supplier,reference'},
+                        '订单数据': {'TTL': '2小时', '标签': 'order,reference'}
+                    }
+                    
+                    config_df = pd.DataFrame([
+                        {'缓存类型': k, 'TTL': v['TTL'], '标签': v['标签']}
+                        for k, v in config_info.items()
+                    ])
+                    st.dataframe(config_df, use_container_width=True)
+                    
+                    st.markdown("""
+                    **📋 说明:**
+                    - TTL (Time To Live): 缓存过期时间
+                    - 标签: 用于批量管理相关缓存
+                    - 缓存文件位置: `cache/pmc_analysis_cache.db`
+                    """)
+            
+            except Exception as e:
+                st.error(f"❌ 缓存管理界面加载失败: {e}")
+                st.info("💡 请检查PMC缓存系统是否正常运行")
     
     # 页脚信息
     st.markdown("---")

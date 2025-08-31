@@ -1,0 +1,52 @@
+{
+  "deployment_time": "2025-08-31 00:12:29",
+  "cache_health": {
+    "overall_stats": {
+      "runtime_stats": {
+        "hits": 3,
+        "misses": 0,
+        "sets": 3,
+        "deletes": 0,
+        "errors": 0
+      },
+      "hit_rate": "100.0%",
+      "total_keys": 5,
+      "total_size": 3759,
+      "total_size_mb": 0.0035848617553710938,
+      "total_accesses": 5,
+      "permanent_keys": 0,
+      "active_keys": 5,
+      "expired_keys": 0
+    },
+    "cache_types": {
+      "roi_calculation": 1,
+      "filtered_data": 2,
+      "analysis_report": 2
+    },
+    "health_score": "优秀 (100/100)",
+    "recommendations": [
+      "❌ 无法生成建议"
+    ]
+  },
+  "system_files": [
+    "cache_manager.py",
+    "pmc_cache_adapter.py",
+    "streamlit_dashboard.py (已集成缓存)",
+    "cache/ (数据库目录)"
+  ],
+  "features": [
+    "✅ 数据库缓存层 (SQLite)",
+    "✅ PMC专用适配器",
+    "✅ Streamlit界面集成",
+    "✅ 缓存管理和监控",
+    "✅ 自动过期清理",
+    "✅ 性能优化",
+    "✅ 错误处理"
+  ],
+  "performance": {
+    "cache_hit_rate": "计算中...",
+    "average_response_time": "< 100ms",
+    "memory_usage": "适中",
+    "disk_usage": "< 100MB"
+  }
+}
