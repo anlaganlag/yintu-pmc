@@ -1301,8 +1301,10 @@ def process_uploaded_files(uploaded_files):
         
         # 显示成功消息
         if result:
-            report_df, filename = result
+            report_df, filename, ready_orders_df = result
             st.success(f"✅ 分析完成！已生成报告: {filename}")
+            if ready_orders_df is not None and len(ready_orders_df) > 0:
+                st.info(f"📋 同时生成不缺料订单清单，共 {len(ready_orders_df)} 个订单")
             st.balloons()
             
             # 延迟刷新页面以显示新数据

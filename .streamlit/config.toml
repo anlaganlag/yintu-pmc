@@ -1,0 +1,30 @@
+[global]
+
+# 云端部署优化配置
+developmentMode = false
+logLevel = "info"
+
+[server]
+
+# 端口配置（Streamlit Cloud自动处理）
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+
+# 文件上传配置
+maxUploadSize = 200
+maxMessageSize = 200
+
+[browser]
+
+# 浏览器配置
+gatherUsageStats = false
+
+[theme]
+
+# 银图PMC主题
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff" 
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
