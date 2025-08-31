@@ -1,5 +1,5 @@
 """
-银图PMC智能分析平台 - 安装配置
+银图订单追踪分析平台 - 安装配置
 Yintu PMC Intelligent Analysis Platform - Setup Configuration
 """
 
@@ -12,7 +12,7 @@ setup(
     name="yintu-pmc",
     version="1.0.0",
     author="Yintu PMC Team",
-    description="银图PMC智能分析平台 - 生产计划与物料控制系统",
+    description="银图订单追踪分析平台 - 生产计划与物料控制系统",
     long_description="A comprehensive production planning and material control system for hair dryer manufacturing",
     python_requires=">=3.8",
     packages=find_packages(),

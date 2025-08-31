@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo 银图PMC智能分析平台 - 依赖安装程序
+echo 银图订单追踪分析平台 - 依赖安装程序
 echo Yintu PMC Platform - Dependency Installer
 echo ========================================
 echo.

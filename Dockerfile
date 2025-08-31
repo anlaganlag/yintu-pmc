@@ -1,4 +1,4 @@
-# 银图PMC智能分析平台 Docker镜像
+# 银图订单追踪分析平台 Docker镜像
 FROM python:3.11-slim
 
 # 设置工作目录

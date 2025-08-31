@@ -1434,7 +1434,7 @@ def main():
     # 在标题区域添加刷新按钮和上传功能
     header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
     with header_col1:
-        st.markdown('<div class="main-title">🌟 银图PMC智能分析平台</div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-title">🌟 银图订单追踪分析平台</div>', unsafe_allow_html=True)
     with header_col2:
         st.markdown('<br>', unsafe_allow_html=True)  # 添加一点空间
         if st.button("📤 数据上传", help="上传Excel文件进行分析"):

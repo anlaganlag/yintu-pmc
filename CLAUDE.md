@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the **银图PMC智能分析平台** (Yingtu PMC Intelligent Analysis Platform) - a comprehensive production planning and material control system for a hair dryer manufacturing factory. The system provides data-driven decision support for procurement, production scheduling, and financial analysis.
+This is the **银图订单追踪分析平台** (Yingtu PMC Intelligent Analysis Platform) - a comprehensive production planning and material control system for a hair dryer manufacturing factory. The system provides data-driven decision support for procurement, production scheduling, and financial analysis.
 
 ## Architecture & System Components
 

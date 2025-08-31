@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yintu-pmc"
 version = "1.0.0"
-description = "银图PMC智能分析平台 - 生产计划与物料控制系统"
+description = "银图订单追踪分析平台 - 生产计划与物料控制系统"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Proprietary"}
