@@ -708,9 +708,17 @@ def create_kpi_cards(data_dict, detail_df=None):
         '数据完整性标记': 'first'
     }).reset_index()
     
-    # 按生产订单号去重计算真实回款金额（与管理指标区域完全一致）
+    # 按客户订单号和生产订单号去重，取最大订单金额（符合SQL逻辑）
+    # SQL: group by customer_order_no, production_order_no, quantity_pcs
+    unique_orders_for_amount = detail_df[detail_df['生产订单号'].notna()].groupby(
+        ['客户订单号', '生产订单号', '数量Pcs']
+    ).agg({
+        '订单金额(RMB)': 'max'  # 取最大值
+    }).reset_index()
+    
+    # 保留原有的按生产订单号汇总的欠料金额和数据完整性信息
     unique_orders = summary_df.groupby('生产订单号').agg({
-        '订单金额(RMB)': 'first',
+        '订单金额(RMB)': 'first',  # 保留用于其他计算
         '欠料金额(RMB)': 'first',
         '数据完整性标记': 'first'   
     }).reset_index()
@@ -752,9 +760,9 @@ def create_kpi_cards(data_dict, detail_df=None):
     no_shortage_return_kpi = 0  # 新增：不缺料订单回款金额
     
     if '订单金额(RMB)' in unique_orders.columns and '欠料金额(RMB)' in unique_orders.columns:
-        # 使用统一的unique_orders数据源，确保与管理指标完全一致
-        # 1. 计算总金额用于显示（与管理指标区域完全相同）
-        total_order_amount = unique_orders['订单金额(RMB)'].sum()
+        # 使用新的SQL逻辑计算总回款金额
+        # 1. 计算总金额：使用按客户订单号+生产订单号+数量分组后的最大值之和
+        total_order_amount = unique_orders_for_amount['订单金额(RMB)'].sum()
         total_shortage_amount = unique_orders['欠料金额(RMB)'].sum()
         
         # 2. 计算加权平均ROI（按投入金额加权）
@@ -1734,8 +1742,15 @@ def main():
                 # 初始化filtered_df（修复变量引用错误）
                 filtered_df = summary_df.copy()
                 
-                # 计算关键统计数据 - 修复重复计算问题
-                # 首先按生产订单号去重计算真实回款金额
+                # 计算关键统计数据 - 使用SQL逻辑
+                # 按客户订单号+生产订单号+数量分组，取最大订单金额
+                unique_orders_for_stats = detail_df[detail_df['生产订单号'].notna()].groupby(
+                    ['客户订单号', '生产订单号', '数量Pcs']
+                ).agg({
+                    '订单金额(RMB)': 'max'
+                }).reset_index()
+                
+                # 保留原有的按生产订单号汇总逻辑用于其他计算
                 unique_orders = summary_df.groupby('生产订单号').agg({
                     '订单金额(RMB)': 'max',  # 每个订单只计算一次
                     '欠料金额(RMB)': 'first',  # 欠料金额已按订单汇总
@@ -1771,12 +1786,11 @@ def main():
                     st.metric("💰 缺料投入", format_currency(total_shortage),
                              help="需要采购的物料金额")
                 with metric_cols[2]:
-                    # 修复：使用与KPI卡片完全相同的逻辑
-            
-                    total_return_all = unique_orders['订单金额(RMB)'].sum()
+                    # 使用SQL逻辑计算总回款金额
+                    total_return_all = unique_orders_for_stats['订单金额(RMB)'].sum()
                     
                     st.metric("💵 预期总回款", format_currency(total_return_all),
-                             help="所有订单的预期回款金额（按客户订单号去重，取first值）")
+                             help="所有订单的预期回款金额（按客户订单号+生产订单号+数量分组，取最大值）")
                 with metric_cols[3]:
                     st.metric("✅ 不缺料订单", f"{no_shortage_count}个",
                              help="无需采购即可生产的订单")
