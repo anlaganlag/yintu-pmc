@@ -30,6 +30,14 @@ class ComprehensivePMCAnalyzer:
             'EUR': 7.85   # 1 EUR = 7.85 RMB
         }
         
+        # 物料编码匹配统计
+        self.material_match_stats = {
+            'total_materials': 0,
+            'matched_inventory': 0,
+            'matched_supplier': 0,
+            'unmatched_materials': []
+        }
+        
     def load_all_data(self):
         """加载所有数据源"""
         print("=== 🔄 加载数据源 ===")
@@ -39,23 +47,36 @@ class ComprehensivePMCAnalyzer:
         try:
             orders_data = []
             
-            # 国内订单
-            orders_aug_domestic = pd.read_excel('input/order-amt-89.xlsx', sheet_name='8月')
-            orders_sep_domestic = pd.read_excel('input/order-amt-89.xlsx', sheet_name='9月')
-            orders_aug_domestic['月份'] = '8月'
-            orders_aug_domestic['数据来源工作表'] = '国内'
-            orders_sep_domestic['月份'] = '9月'
-            orders_sep_domestic['数据来源工作表'] = '国内'
-            orders_data.extend([orders_aug_domestic, orders_sep_domestic])
+            # 国内订单 - 增强错误处理
+            try:
+                orders_aug_domestic = pd.read_excel('input/order-amt-89.xlsx', sheet_name='8月')
+                orders_sep_domestic = pd.read_excel('input/order-amt-89.xlsx', sheet_name='9月')
+                orders_aug_domestic['月份'] = '8月'
+                orders_aug_domestic['数据来源工作表'] = '国内'
+                orders_sep_domestic['月份'] = '9月'
+                orders_sep_domestic['数据来源工作表'] = '国内'
+                orders_data.extend([orders_aug_domestic, orders_sep_domestic])
+                print("   ✅ 国内订单数据加载成功")
+            except Exception as e:
+                print(f"   ⚠️ 国内订单数据加载失败: {e}")
+                print("   💡 请检查 input/order-amt-89.xlsx 文件是否存在且包含'8月'和'9月'工作表")
+                return False
             
-            # 柬埔寨订单
-            orders_aug_cambodia = pd.read_excel('input/order-amt-89-c.xlsx', sheet_name='8月 -柬')
-            orders_sep_cambodia = pd.read_excel('input/order-amt-89-c.xlsx', sheet_name='9月 -柬')
-            orders_aug_cambodia['月份'] = '8月'
-            orders_aug_cambodia['数据来源工作表'] = '柬埔寨'
-            orders_sep_cambodia['月份'] = '9月'
-            orders_sep_cambodia['数据来源工作表'] = '柬埔寨'
-            orders_data.extend([orders_aug_cambodia, orders_sep_cambodia])
+            # 柬埔寨订单 - 增强错误处理
+            try:
+                orders_aug_cambodia = pd.read_excel('input/order-amt-89-c.xlsx', sheet_name='8月 -柬')
+                orders_sep_cambodia = pd.read_excel('input/order-amt-89-c.xlsx', sheet_name='9月 -柬')
+                orders_aug_cambodia['月份'] = '8月'
+                orders_aug_cambodia['数据来源工作表'] = '柬埔寨'
+                orders_sep_cambodia['月份'] = '9月'
+                orders_sep_cambodia['数据来源工作表'] = '柬埔寨'
+                orders_data.extend([orders_aug_cambodia, orders_sep_cambodia])
+                print("   ✅ 柬埔寨订单数据加载成功")
+            except Exception as e:
+                print(f"   ⚠️ 柬埔寨订单数据加载失败: {e}")
+                print("   💡 请检查 input/order-amt-89-c.xlsx 文件是否存在且包含'8月 -柬'和'9月 -柬'工作表")
+                # 柬埔寨数据为可选，继续执行
+                print("   ℹ️ 将继续处理国内订单数据...")
             
             # 合并所有订单
             self.orders_df = pd.concat(orders_data, ignore_index=True)
@@ -104,6 +125,11 @@ class ComprehensivePMCAnalyzer:
         try:
             self.shortage_df = pd.read_excel('input/mat_owe_pso.xlsx', 
                                            sheet_name='Sheet1', skiprows=1)
+            if self.shortage_df.empty:
+                print("   ⚠️ 欠料表为空，将处理为无欠料情况")
+                self.shortage_df = pd.DataFrame()
+            else:
+                print(f"   ✅ 欠料表原始数据: {len(self.shortage_df)}条")
             
             # 标准化欠料表列名
             if len(self.shortage_df.columns) >= 13:
@@ -123,6 +149,8 @@ class ComprehensivePMCAnalyzer:
             
         except Exception as e:
             print(f"   ❌ 欠料表加载失败: {e}")
+            print("   💡 请检查 input/mat_owe_pso.xlsx 文件是否存在")
+            print("   ℹ️ 将以无欠料模式继续分析...")
             self.shortage_df = pd.DataFrame()
         
         # 3. 加载库存价格表
@@ -133,8 +161,15 @@ class ComprehensivePMCAnalyzer:
                 self.inventory_df = pd.read_excel('input/inventory_list.xlsx', sheet_name='银图库存总表')
                 print("   📋 使用工作表: 银图库存总表")
             except:
-                self.inventory_df = pd.read_excel('input/inventory_list.xlsx')
-                print("   📋 使用默认第一个工作表")
+                try:
+                    self.inventory_df = pd.read_excel('input/inventory_list.xlsx')
+                    print("   📋 使用默认第一个工作表")
+                except Exception as inner_e:
+                    print(f"   ❌ 无法读取库存文件: {inner_e}")
+                    self.inventory_df = pd.DataFrame()
+                    
+            if not self.inventory_df.empty:
+                print(f"   ✅ 库存数据原始记录: {len(self.inventory_df)}条")
             
             # 价格处理：优先最新報價，回退到成本單價
             # 先转换为数值，空值和非数值都会变成NaN
@@ -174,12 +209,16 @@ class ComprehensivePMCAnalyzer:
             
         except Exception as e:
             print(f"   ❌ 库存表加载失败: {e}")
+            print("   💡 请检查 input/inventory_list.xlsx 文件是否存在")
+            print("   ⚠️ 库存价格将无法匹配，可能影响投产比计算准确性")
             self.inventory_df = pd.DataFrame()
         
         # 4. 加载供应商表
         print("4. 加载supplier.xlsx供应商表...")
         try:
             self.supplier_df = pd.read_excel('input/supplier.xlsx')
+            if not self.supplier_df.empty:
+                print(f"   ✅ 供应商数据原始记录: {len(self.supplier_df)}条")
             
             # 处理供应商价格和货币转换
             self.supplier_df['单价_数值'] = pd.to_numeric(self.supplier_df['单价'], errors='coerce').fillna(0)
@@ -201,6 +240,8 @@ class ComprehensivePMCAnalyzer:
             
         except Exception as e:
             print(f"   ❌ 供应商表加载失败: {e}")
+            print("   💡 请检查 input/supplier.xlsx 文件是否存在")
+            print("   ⚠️ 供应商信息将无法匹配，可能影响采购建议准确性")
             self.supplier_df = pd.DataFrame()
         
         print("✅ 数据加载完成\n")
@@ -223,6 +264,45 @@ class ComprehensivePMCAnalyzer:
         # 选择最低价供应商
         lowest_price_idx = valid_suppliers['供应商RMB单价'].idxmin()
         return valid_suppliers.loc[lowest_price_idx]
+    
+    def standardize_material_code(self, code):
+        """物料编码标准化函数"""
+        if pd.isna(code) or code == '' or str(code).strip() == '':
+            return ''
+        
+        # 转为字符串、去除空格、转大写
+        code = str(code).strip().upper()
+        
+        # 只保留字母、数字、连字符和下划线
+        code = re.sub(r'[^\w-]', '', code)
+        
+        return code
+    
+    def update_material_match_stats(self, material_code, matched_inventory=False, matched_supplier=False):
+        """更新物料匹配统计"""
+        self.material_match_stats['total_materials'] += 1
+        if matched_inventory:
+            self.material_match_stats['matched_inventory'] += 1
+        if matched_supplier:
+            self.material_match_stats['matched_supplier'] += 1
+        if not (matched_inventory or matched_supplier):
+            self.material_match_stats['unmatched_materials'].append(material_code)
+    
+    def validate_required_columns(self, df, df_name, required_columns, optional_columns=None):
+        """验证DataFrame是否包含必需的列"""
+        if optional_columns is None:
+            optional_columns = []
+        
+        missing_required = [col for col in required_columns if col not in df.columns]
+        if missing_required:
+            print(f"   ❌ {df_name}缺少必需列: {missing_required}")
+            return False
+        
+        missing_optional = [col for col in optional_columns if col not in df.columns]
+        if missing_optional:
+            print(f"   ⚠️ {df_name}缺少可选列: {missing_optional}")
+        
+        return True
     
     def comprehensive_left_join_analysis(self):
         """综合LEFT JOIN分析 - 以订单表为主表"""
@@ -287,13 +367,29 @@ class ComprehensivePMCAnalyzer:
         if not self.inventory_df.empty:
             print("3. LEFT JOIN 库存价格信息...")
             
-            # 清理物料编号中的空格，确保匹配成功
-            result['物料编号_清理'] = result['物料编号'].astype(str).str.strip()
-            self.inventory_df['物項編號_清理'] = self.inventory_df['物項編號'].astype(str).str.strip()
+            # 使用标准化函数清理物料编号，确保匹配成功
+            result['物料编号_清理'] = result['物料编号'].apply(self.standardize_material_code)
+            
+            # 统一库存表字段名称（繁体转简体）
+            if '物項編號' in self.inventory_df.columns:
+                self.inventory_df['物料编号'] = self.inventory_df['物項編號']
+            elif '物料编号' not in self.inventory_df.columns:
+                print("   ❌ 库存表中找不到物料编号相关字段")
+                # 使用第一列作为物料编号
+                first_col = self.inventory_df.columns[0]
+                print(f"   🔧 使用第一列 '{first_col}' 作为物料编号")
+                self.inventory_df['物料编号'] = self.inventory_df[first_col]
+            
+            self.inventory_df['物料编号_清理'] = self.inventory_df['物料编号'].apply(self.standardize_material_code)
+            
+            # 验证库存表必需列
+            required_cols = ['物料编号_清理']
+            optional_cols = ['物項名稱', 'RMB单价', '貨幣', '最终价格']
+            self.validate_required_columns(self.inventory_df, "库存表", required_cols, optional_cols)
             
             # 检查特定物料是否在库存表中
-            if '738-83600109R' in self.inventory_df['物項編號_清理'].values:
-                test_item = self.inventory_df[self.inventory_df['物項編號_清理'] == '738-83600109R'].iloc[0]
+            if '738-83600109R' in self.inventory_df['物料编号_清理'].values:
+                test_item = self.inventory_df[self.inventory_df['物料编号_清理'] == '738-83600109R'].iloc[0]
                 print(f"   🔍 测试物料738-83600109R在库存表中: 成本單價={test_item.get('成本單價')}, RMB单价={test_item.get('RMB单价')}")
             
             # 检查欠料表中的物料编号格式
@@ -301,10 +397,17 @@ class ComprehensivePMCAnalyzer:
             if '738-83600109R' in unique_shortage_materials:
                 print(f"   🔍 测试物料738-83600109R在欠料表中存在")
             
+            # 确保所需列存在
+            inventory_columns = ['物料编号_清理']
+            optional_columns = ['物項名稱', 'RMB单价', '貨幣', '最终价格']
+            for col in optional_columns:
+                if col in self.inventory_df.columns:
+                    inventory_columns.append(col)
+            
             result = result.merge(
-                self.inventory_df[['物項編號_清理', '物項名稱', 'RMB单价', '貨幣', '最终价格']],
+                self.inventory_df[inventory_columns],
                 left_on='物料编号_清理',
-                right_on='物項編號_清理',
+                right_on='物料编号_清理',
                 how='left',
                 suffixes=('', '_库存')
             )
@@ -314,18 +417,40 @@ class ComprehensivePMCAnalyzer:
             
             # 检查匹配后的结果
             test_rows = result[result['物料编号'] == '738-83600109R']
-            if not test_rows.empty:
+            if not test_rows.empty and 'RMB单价' in test_rows.columns:
                 print(f"   🔍 测试物料738-83600109R匹配后: RMB单价={test_rows['RMB单价'].iloc[0]}")
         else:
             print("3. ⚠️ 跳过库存价格匹配（库存表为空）")
             result['RMB单价'] = 0
+            result['物項名稱'] = ''
+            result['貨幣'] = ''
+            result['最终价格'] = 0
         
         # LEFT JOIN 供应商信息（按物料选择最低价供应商）
         if not self.supplier_df.empty:
             print("4. LEFT JOIN 供应商信息（最低价选择）...")
             
-            # 清理供应商表的物料编号
-            self.supplier_df['物项编号_清理'] = self.supplier_df['物项编号'].astype(str).str.strip()
+            # 统一供应商表字段名称并清理物料编号
+            if '物项编号' in self.supplier_df.columns:
+                self.supplier_df['物料编号'] = self.supplier_df['物项编号']
+            elif '物料编号' not in self.supplier_df.columns:
+                print("   ❌ 供应商表中找不到物料编号相关字段")
+                # 尝试找到可能的物料编号列
+                possible_cols = [col for col in self.supplier_df.columns if '编号' in col or '号' in col]
+                if possible_cols:
+                    first_possible = possible_cols[0]
+                    print(f"   🔧 使用列 '{first_possible}' 作为物料编号")
+                    self.supplier_df['物料编号'] = self.supplier_df[first_possible]
+                else:
+                    print(f"   🔧 使用第一列 '{self.supplier_df.columns[0]}' 作为物料编号")
+                    self.supplier_df['物料编号'] = self.supplier_df[self.supplier_df.columns[0]]
+            
+            self.supplier_df['物料编号_清理'] = self.supplier_df['物料编号'].apply(self.standardize_material_code)
+            
+            # 验证供应商表必需列
+            required_cols = ['物料编号_清理']
+            optional_cols = ['供应商名称', '供应商号', '单价', '币种', '起订数量', '修改日期']
+            self.validate_required_columns(self.supplier_df, "供应商表", required_cols, optional_cols)
             
             # 为每个唯一物料选择最低价供应商
             unique_materials = result[result['物料编号_清理'].notna()]['物料编号_清理'].unique()
@@ -334,7 +459,13 @@ class ComprehensivePMCAnalyzer:
             processed_count = 0
             
             for material_code in unique_materials:
-                material_suppliers = self.supplier_df[self.supplier_df['物项编号_清理'] == material_code]
+                material_suppliers = self.supplier_df[self.supplier_df['物料编号_清理'] == material_code]
+                
+                # 检查库存和供应商匹配情况
+                has_inventory = material_code in self.inventory_df['物料编号_清理'].values
+                has_supplier = len(material_suppliers) > 0
+                
+                self.update_material_match_stats(material_code, has_inventory, has_supplier)
                 
                 if len(material_suppliers) > 0:
                     best_supplier = self.select_lowest_price_supplier(material_suppliers)
@@ -360,6 +491,9 @@ class ComprehensivePMCAnalyzer:
             print(f"   ✅ 匹配到供应商信息: {matched_suppliers}条记录")
             print(f"   📊 找到供应商的物料: {len(supplier_mapping)}个")
             
+            # 输出匹配质量统计
+            self.print_material_match_statistics()
+            
         else:
             print("4. ⚠️ 跳过供应商匹配（供应商表为空）")
             result['主供应商名称'] = None
@@ -372,6 +506,33 @@ class ComprehensivePMCAnalyzer:
         self.final_result = result
         print("✅ LEFT JOIN 分析完成\n")
         return True
+    
+    def print_material_match_statistics(self):
+        """输出物料匹配质量统计"""
+        stats = self.material_match_stats
+        total = stats['total_materials']
+        
+        if total == 0:
+            print("   📊 无物料需要匹配")
+            return
+        
+        inv_rate = (stats['matched_inventory'] / total * 100) if total > 0 else 0
+        sup_rate = (stats['matched_supplier'] / total * 100) if total > 0 else 0
+        
+        print(f"   📊 物料匹配质量统计:")
+        print(f"      总物料数: {total}个")
+        print(f"      库存匹配: {stats['matched_inventory']}个 ({inv_rate:.1f}%)")
+        print(f"      供应商匹配: {stats['matched_supplier']}个 ({sup_rate:.1f}%)")
+        
+        unmatched = stats['unmatched_materials']
+        if len(unmatched) > 0:
+            print(f"      未匹配物料: {len(unmatched)}个")
+            if len(unmatched) <= 5:
+                print(f"         {', '.join(unmatched[:5])}")
+            else:
+                print(f"         {', '.join(unmatched[:5])}... (+{len(unmatched)-5}个)")
+        else:
+            print(f"      ✅ 所有物料均已匹配")
     
     def calculate_derived_fields(self):
         """计算派生字段：欠料金额、订单金额(RMB)、每元投入回款"""
@@ -411,10 +572,10 @@ class ComprehensivePMCAnalyzer:
         # 先按生产订单号和客户订单号组合去重，然后按生产订单号汇总
         print("   正在处理生产订单与客户订单的一对多关系...")
         
-        # 第一步：按生产订单号+客户订单号去重，确保每个客户订单只计算一次
-        unique_combinations = self.final_result.groupby(['生产单号', '客户订单号']).agg({
-            '订单金额(RMB)': 'first',   # 每个客户订单只取一次金额
-            '欠料金额(RMB)': 'sum'      # 欠料金额需要汇总（同一客户订单可能缺多种物料）
+        # 第一步：按生产订单号+客户订单号+数量Pcs去重，确保每个唯一组合只计算一次
+        unique_combinations = self.final_result.groupby(['生产单号', '客户订单号', '数量Pcs']).agg({
+            '订单金额(RMB)': 'first',   # 每个唯一组合只取一次金额
+            '欠料金额(RMB)': 'sum'      # 欠料金额需要汇总（同一组合可能缺多种物料）
         }).reset_index()
         
         # 第二步：按生产订单号汇总，正确聚合多个客户订单的金额
@@ -423,9 +584,13 @@ class ComprehensivePMCAnalyzer:
             '欠料金额(RMB)': 'sum'      # ✅ 汇总同一生产订单下所有欠料金额
         }).reset_index()
         
-        # 检查一对多关系统计
+        # 检查数据维度统计
         prod_cust_mapping = self.final_result.groupby('生产单号')['客户订单号'].nunique()
         multi_customer_orders = prod_cust_mapping[prod_cust_mapping > 1]
+        
+        # 检查同一生产订单的不同数量记录
+        prod_qty_mapping = self.final_result.groupby('生产单号')['数量Pcs'].nunique()
+        multi_qty_orders = prod_qty_mapping[prod_qty_mapping > 1]
         
         if len(multi_customer_orders) > 0:
             print(f"   ✅ 正确处理了{len(multi_customer_orders)}个生产订单的多客户订单关系")
@@ -434,8 +599,15 @@ class ComprehensivePMCAnalyzer:
                 customer_count = prod_data['客户订单号'].nunique()
                 total_amount = order_totals[order_totals['生产单号'] == prod_order]['订单金额(RMB)'].iloc[0]
                 print(f"      {prod_order}: {customer_count}个客户订单 → 总金额 ¥{total_amount:,.2f}")
+        
+        if len(multi_qty_orders) > 0:
+            print(f"   ⚠️  发现{len(multi_qty_orders)}个生产订单存在不同数量记录，已正确处理")
+            for prod_order in multi_qty_orders.index[:3]:  # 显示前3个例子
+                prod_data = self.final_result[self.final_result['生产单号'] == prod_order]
+                qty_list = prod_data['数量Pcs'].unique()
+                print(f"      {prod_order}: 数量变化 {qty_list}")
         else:
-            print("   ℹ️  所有生产订单都是一对一关系")
+            print("   ✅ 所有生产订单的数量维度一致")
         
         # 计算ROI - 区分无需投入和需要投入的订单
         def calculate_roi(row):
@@ -646,6 +818,64 @@ class ComprehensivePMCAnalyzer:
             print(f"      {month}-{source}: {row['生产单号']}个订单, ¥{row['订单金额(RMB)']:,.2f}")
         
         return final_ready_orders
+    
+    def generate_data_quality_report(self):
+        """生成数据质量报告"""
+        print("=== 📊 生成数据质量报告 ===")
+        
+        if self.final_result is None:
+            print("❌ 没有分析结果数据")
+            return None
+        
+        # 统计关键指标
+        total_orders = self.final_result['生产单号'].nunique()
+        total_records = len(self.final_result)
+        
+        # 数据完整性统计
+        completeness_stats = self.final_result['数据完整性标记'].value_counts()
+        complete_orders = completeness_stats.get('完整', 0)
+        partial_orders = completeness_stats.get('部分', 0)
+        
+        # 价格匹配统计
+        has_price = len(self.final_result[self.final_result['RMB单价'] > 0])
+        has_supplier = len(self.final_result[self.final_result['主供应商名称'].notna() & 
+                                            (self.final_result['主供应商名称'] != '')])
+        
+        # 计算匹配率
+        price_match_rate = (has_price / total_records * 100) if total_records > 0 else 0
+        supplier_match_rate = (has_supplier / total_records * 100) if total_records > 0 else 0
+        
+        # 高风险订单（价格匹配失败但金额较大）
+        high_risk_orders = self.final_result[
+            (self.final_result['RMB单价'] == 0) & 
+            (pd.to_numeric(self.final_result['订单金额(RMB)'], errors='coerce') > 10000)
+        ]
+        
+        print(f"📈 数据质量报告:")
+        print(f"   总订单数: {total_orders}个")
+        print(f"   总记录数: {total_records}条")
+        print(f"   完整数据订单: {complete_orders}个 ({complete_orders/total_orders*100:.1f}%)")
+        print(f"   部分数据订单: {partial_orders}个")
+        print(f"   价格匹配率: {price_match_rate:.1f}%")
+        print(f"   供应商匹配率: {supplier_match_rate:.1f}%")
+        
+        if len(high_risk_orders) > 0:
+            print(f"⚠️  高风险订单: {len(high_risk_orders)}个（无价格但金额>1万）")
+            for _, order in high_risk_orders.head(3).iterrows():
+                amount = order.get('订单金额(RMB)', 0)
+                prod_no = order.get('生产单号', 'N/A')
+                material = order.get('物料编号', 'N/A')
+                print(f"      {prod_no}: 物料{material}, 订单金额¥{amount:,.2f}")
+        else:
+            print("✅ 无高风险订单")
+        
+        return {
+            'total_orders': total_orders,
+            'completeness_stats': completeness_stats,
+            'price_match_rate': price_match_rate,
+            'supplier_match_rate': supplier_match_rate,
+            'high_risk_count': len(high_risk_orders)
+        }
     
     def save_ready_to_produce_orders(self, ready_orders_df):
         """保存不缺料订单清单到Excel"""
@@ -894,15 +1124,18 @@ class ComprehensivePMCAnalyzer:
             if ready_orders_df is not None:
                 ready_orders_filename = self.save_ready_to_produce_orders(ready_orders_df)
             
-            # 5. 生成综合报表
+            # 5. 生成数据质量报告
+            quality_report = self.generate_data_quality_report()
+            
+            # 6. 生成综合报表
             report_df = self.generate_comprehensive_report()
             if report_df is None:
                 return None
             
-            # 6. 保存综合报表
+            # 7. 保存综合报表
             filename = self.save_comprehensive_report(report_df)
             
-            # 7. 输出最终汇总
+            # 8. 输出最终汇总
             print("\n" + "="*80)
             print(" "*20 + "🎉 综合分析完成！")
             print("="*80)
