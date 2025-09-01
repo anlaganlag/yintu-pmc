@@ -128,11 +128,37 @@ class ComprehensivePMCAnalyzer:
         # 3. 加载库存价格表
         print("3. 加载inventory_list.xlsx库存表...")
         try:
-            self.inventory_df = pd.read_excel('input/inventory_list.xlsx')
+            # 尝试读取"银图库存总表"工作表，如果不存在则读取第一个工作表
+            try:
+                self.inventory_df = pd.read_excel('input/inventory_list.xlsx', sheet_name='银图库存总表')
+                print("   📋 使用工作表: 银图库存总表")
+            except:
+                self.inventory_df = pd.read_excel('input/inventory_list.xlsx')
+                print("   📋 使用默认第一个工作表")
             
             # 价格处理：优先最新報價，回退到成本單價
-            self.inventory_df['最终价格'] = self.inventory_df['最新報價'].fillna(self.inventory_df['成本單價'])
-            self.inventory_df['最终价格'] = pd.to_numeric(self.inventory_df['最终价格'], errors='coerce').fillna(0)
+            # 先转换为数值，空值和非数值都会变成NaN
+            self.inventory_df['最新報價_数值'] = pd.to_numeric(self.inventory_df['最新報價'], errors='coerce')
+            self.inventory_df['成本單價_数值'] = pd.to_numeric(self.inventory_df['成本單價'], errors='coerce')
+            
+            # 优先使用有效的最新報價（>0），否则使用成本單價
+            def get_final_price(row):
+                latest_price = row.get('最新報價_数值', 0)
+                cost_price = row.get('成本單價_数值', 0)
+                
+                if pd.notna(latest_price) and latest_price > 0:
+                    return latest_price
+                elif pd.notna(cost_price) and cost_price > 0:
+                    return cost_price
+                else:
+                    return 0
+            
+            self.inventory_df['最终价格'] = self.inventory_df.apply(get_final_price, axis=1)
+            
+            # 调试信息：检查738-83600109R的价格处理过程
+            if '738-83600109R' in self.inventory_df['物項編號'].astype(str).str.strip().values:
+                test_row = self.inventory_df[self.inventory_df['物項編號'].astype(str).str.strip() == '738-83600109R'].iloc[0]
+                print(f"   🔍 738-83600109R价格处理: 最新報價={test_row.get('最新報價')}, 成本單價={test_row.get('成本單價')}, 最终价格={test_row.get('最终价格')}")
             
             # 货币转换为RMB
             def convert_to_rmb(row):
@@ -260,16 +286,36 @@ class ComprehensivePMCAnalyzer:
         # LEFT JOIN 库存价格信息
         if not self.inventory_df.empty:
             print("3. LEFT JOIN 库存价格信息...")
+            
+            # 清理物料编号中的空格，确保匹配成功
+            result['物料编号_清理'] = result['物料编号'].astype(str).str.strip()
+            self.inventory_df['物項編號_清理'] = self.inventory_df['物項編號'].astype(str).str.strip()
+            
+            # 检查特定物料是否在库存表中
+            if '738-83600109R' in self.inventory_df['物項編號_清理'].values:
+                test_item = self.inventory_df[self.inventory_df['物項編號_清理'] == '738-83600109R'].iloc[0]
+                print(f"   🔍 测试物料738-83600109R在库存表中: 成本單價={test_item.get('成本單價')}, RMB单价={test_item.get('RMB单价')}")
+            
+            # 检查欠料表中的物料编号格式
+            unique_shortage_materials = result[result['物料编号_清理'].notna()]['物料编号_清理'].unique()
+            if '738-83600109R' in unique_shortage_materials:
+                print(f"   🔍 测试物料738-83600109R在欠料表中存在")
+            
             result = result.merge(
-                self.inventory_df[['物項編號', '物項名稱', 'RMB单价', '貨幣', '最终价格']],
-                left_on='物料编号',
-                right_on='物項編號',
+                self.inventory_df[['物項編號_清理', '物項名稱', 'RMB单价', '貨幣', '最终价格']],
+                left_on='物料编号_清理',
+                right_on='物項編號_清理',
                 how='left',
                 suffixes=('', '_库存')
             )
             
             matched_inventory = len(result[result['RMB单价'].notna()])
             print(f"   ✅ 匹配到库存价格: {matched_inventory}条记录")
+            
+            # 检查匹配后的结果
+            test_rows = result[result['物料编号'] == '738-83600109R']
+            if not test_rows.empty:
+                print(f"   🔍 测试物料738-83600109R匹配后: RMB单价={test_rows['RMB单价'].iloc[0]}")
         else:
             print("3. ⚠️ 跳过库存价格匹配（库存表为空）")
             result['RMB单价'] = 0
@@ -278,14 +324,17 @@ class ComprehensivePMCAnalyzer:
         if not self.supplier_df.empty:
             print("4. LEFT JOIN 供应商信息（最低价选择）...")
             
+            # 清理供应商表的物料编号
+            self.supplier_df['物项编号_清理'] = self.supplier_df['物项编号'].astype(str).str.strip()
+            
             # 为每个唯一物料选择最低价供应商
-            unique_materials = result[result['物料编号'].notna()]['物料编号'].unique()
+            unique_materials = result[result['物料编号_清理'].notna()]['物料编号_清理'].unique()
             
             supplier_mapping = {}
             processed_count = 0
             
             for material_code in unique_materials:
-                material_suppliers = self.supplier_df[self.supplier_df['物项编号'] == material_code]
+                material_suppliers = self.supplier_df[self.supplier_df['物项编号_清理'] == material_code]
                 
                 if len(material_suppliers) > 0:
                     best_supplier = self.select_lowest_price_supplier(material_suppliers)
@@ -305,7 +354,7 @@ class ComprehensivePMCAnalyzer:
             
             # 映射供应商信息到结果表
             for col in ['主供应商名称', '主供应商号', '供应商单价(原币)', '币种', '起订数量', '供应商修改日期']:
-                result[col] = result['物料编号'].map(lambda x: supplier_mapping.get(x, {}).get(col, None))
+                result[col] = result['物料编号_清理'].map(lambda x: supplier_mapping.get(x, {}).get(col, None))
             
             matched_suppliers = len(result[result['主供应商名称'].notna()])
             print(f"   ✅ 匹配到供应商信息: {matched_suppliers}条记录")
